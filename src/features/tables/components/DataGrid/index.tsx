@@ -386,6 +386,8 @@ export function DataGrid({
         smoothScrollY
         freezeColumns={1}
         rowMarkers={selectable ? "checkbox" : "none"}
+        rowSelectionMode="multi"
+        rowSelect={selectable ? "multi" : "none"}
         gridSelection={selectable ? gridSelection : undefined}
         onGridSelectionChange={selectable ? handleGridSelectionChange : undefined}
         getCellsForSelection
