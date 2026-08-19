@@ -1,0 +1,340 @@
+import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  RefreshCw,
+  Trash2,
+  X,
+  XCircle,
+} from "lucide-react";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/src/app/components/ui/alert-dialog";
+import { Button } from "@/src/app/components/ui/button";
+import { DataGrid, type JsonCellMode, type PendingEdit } from "@/src/features/tables/components/DataGrid";
+import { JsonInspectorSheet } from "@/src/features/tables/components/JsonViewer/JsonInspectorSheet";
+import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
+import {
+  deleteRows,
+  fetchTableRows,
+  updateCellText,
+  type CellValue,
+  type TableRowsResult,
+} from "@/src/features/tables/api";
+import type { TableTab } from "@/src/features/tables/types";
+import { toErrorMessage } from "@/src/lib/tauri/errors";
+
+interface TableViewProps {
+  tab: TableTab;
+}
+
+interface JsonSheetState {
+  connectionId: string;
+  schema: string;
+  table: string;
+  row: Record<string, CellValue>;
+  columnName: string;
+  value: JsonValue;
+  mode: JsonCellMode;
+}
+
+const PAGE_SIZE = 200;
+
+export function TableView({ tab }: TableViewProps) {
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<TableRowsResult | null>(null);
+  const [jsonSheet, setJsonSheet] = useState<JsonSheetState | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPage(0);
+    resetPendingState();
+  }, [tab.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    fetchTableRows(tab.connectionId, tab.schema, tab.table, PAGE_SIZE, page * PAGE_SIZE)
+      .then((res) => {
+        if (!cancelled) setResult(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(toErrorMessage(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab.connectionId, tab.schema, tab.table, page]);
+
+  function resetPendingState() {
+    setPendingEdit(null);
+    setSaveError(null);
+    setSelectedRowIndices(new Set());
+    setDeleteError(null);
+  }
+
+  function refresh() {
+    setError(null);
+    setLoading(true);
+    resetPendingState();
+    fetchTableRows(tab.connectionId, tab.schema, tab.table, PAGE_SIZE, page * PAGE_SIZE)
+      .then(setResult)
+      .catch((err) => setError(toErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }
+
+  function changePage(next: number) {
+    resetPendingState();
+    setPage(next);
+  }
+
+  async function handleSaveEdit() {
+    if (!pendingEdit || !result) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateCellText(
+        tab.connectionId,
+        tab.schema,
+        tab.table,
+        rowToObject(result.columns, pendingEdit.row),
+        pendingEdit.columnName,
+        pendingEdit.newValue
+      );
+      setPendingEdit(null);
+      refresh();
+    } catch (err) {
+      setSaveError(toErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleDiscardEdit() {
+    setPendingEdit(null);
+    setSaveError(null);
+  }
+
+  async function handleConfirmDelete() {
+    if (!result || selectedRowIndices.size === 0) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const rowsToDelete = [...selectedRowIndices].map((i) => rowToObject(result.columns, result.rows[i]));
+      await deleteRows(tab.connectionId, tab.schema, tab.table, rowsToDelete);
+      setConfirmDeleteOpen(false);
+      refresh();
+    } catch (err) {
+      setDeleteError(toErrorMessage(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const selectedCount = selectedRowIndices.size;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {tab.schema}.{tab.table}
+          </span>
+          {result && <span>{result.rowCount} rows on this page</span>}
+        </div>
+        <div className="flex items-center gap-1">
+          {selectedCount > 0 && (
+            <Button
+              variant="destructive"
+              size="xs"
+              className="mr-1 gap-1.5"
+              onClick={() => setConfirmDeleteOpen(true)}
+              disabled={loading}
+            >
+              <Trash2 className="size-3.5" />
+              Delete {selectedCount}
+            </Button>
+          )}
+          <Button variant="ghost" size="icon-sm" onClick={refresh} disabled={loading}>
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => changePage(Math.max(0, page - 1))}
+            disabled={page === 0 || loading}
+          >
+            <ChevronLeft className="size-3.5" />
+          </Button>
+          <span className="w-8 text-center text-xs text-muted-foreground">{page + 1}</span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => changePage(page + 1)}
+            disabled={!result?.hasMore || loading}
+          >
+            <ChevronRight className="size-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      {pendingEdit && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-amber-500/10 px-3 py-1.5">
+          <span className="text-xs text-amber-600 dark:text-amber-400">
+            <strong>{pendingEdit.columnName}</strong> changed — unsaved
+          </span>
+          <div className="flex items-center gap-1.5">
+            <Button variant="ghost" size="xs" className="gap-1" onClick={handleDiscardEdit} disabled={saving}>
+              <X className="size-3.5" />
+              Discard
+            </Button>
+            <Button size="xs" className="gap-1" onClick={handleSaveEdit} disabled={saving}>
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {saveError && (
+        <div className="mx-3 mt-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          <XCircle className="size-3.5 shrink-0 translate-y-0.5" />
+          <span className="wrap-break-word">{saveError}</span>
+        </div>
+      )}
+
+      <div className="min-h-0 flex-1">
+        {loading && !result && (
+          <div className="flex h-full items-center justify-center text-muted-foreground">
+            <Loader2 className="size-5 animate-spin" />
+          </div>
+        )}
+
+        {error && (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+            <XCircle className="size-6 text-destructive" />
+            <p className="max-w-md text-sm text-destructive">{error}</p>
+            <Button variant="outline" size="sm" onClick={refresh}>
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {result && !error && result.rowCount === 0 && (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            This table has no rows.
+          </div>
+        )}
+
+        {result && !error && result.rowCount > 0 && (
+          <DataGrid
+            columns={result.columns}
+            rows={result.rows}
+            editable
+            pendingEdit={pendingEdit}
+            onPendingEditChange={(edit) => {
+              setSaveError(null);
+              setPendingEdit(edit);
+            }}
+            saving={saving}
+            selectable
+            selectedRowIndices={selectedRowIndices}
+            onSelectionChange={setSelectedRowIndices}
+            onOpenJsonCell={(columnName, value, row, mode) => {
+              setJsonSheet({
+                connectionId: tab.connectionId,
+                schema: tab.schema,
+                table: tab.table,
+                row: rowToObject(result.columns, row),
+                columnName,
+                value,
+                mode,
+              });
+            }}
+          />
+        )}
+      </div>
+
+      <JsonInspectorSheet
+        open={jsonSheet !== null}
+        onOpenChange={(open) => !open && setJsonSheet(null)}
+        target={jsonSheet}
+        onSaved={refresh}
+      />
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={(open) => !deleting && setConfirmDeleteOpen(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-destructive/10 text-destructive">
+              <AlertTriangle />
+            </AlertDialogMedia>
+            <AlertDialogTitle>
+              Delete {selectedCount} row{selectedCount === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes {selectedCount} row{selectedCount === 1 ? "" : "s"} from{" "}
+              <strong>
+                {tab.schema}.{tab.table}
+              </strong>
+              . This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {deleteError && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <XCircle className="size-3.5 shrink-0 translate-y-0.5" />
+              <span className="wrap-break-word">{deleteError}</span>
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={deleting}
+              className="gap-1.5"
+            >
+              {deleting && <Loader2 className="size-3.5 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function rowToObject(columns: string[], row: CellValue[]): Record<string, CellValue> {
+  const obj: Record<string, CellValue> = {};
+  columns.forEach((col, i) => {
+    obj[col] = row[i];
+  });
+  return obj;
+}

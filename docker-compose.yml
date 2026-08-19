@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: queryon-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: devdb
+    ports:
+      # Non-default host port so this doesn't collide with a Postgres
+      # instance you might already have running locally on 5432 or 55432.
+      - "55433:5432"
+    volumes:
+      - queryon-pg-data:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d devdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  queryon-pg-data:
