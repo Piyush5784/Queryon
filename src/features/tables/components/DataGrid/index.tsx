@@ -377,7 +377,7 @@ export function DataGrid({
         onCellEdited={editable ? handleCellEdited : undefined}
         onCellClicked={handleCellClicked}
         onCellContextMenu={handleCellContextMenu}
-        onColumnResizeEnd={handleColumnResize}
+        onColumnResize={handleColumnResize}
         rowHeight={ROW_HEIGHT}
         headerHeight={ROW_HEIGHT}
         cellActivationBehavior="double-click"
