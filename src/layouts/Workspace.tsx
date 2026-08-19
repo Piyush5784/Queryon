@@ -1,21 +1,25 @@
-import { DatabaseZap, Plus, Table2 } from "lucide-react";
+import { TerminalSquare } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
 } from "@/src/app/components/ui/empty";
+import type { AppTab } from "@/src/app/tabs";
+import type { ConnectionProfile } from "@/src/features/connections/types";
+import { QueryTabView } from "@/src/features/query/components/QueryTabView";
 import { TabBar } from "@/src/features/tables/components/TableToolbar/TabBar";
 import { TableView } from "@/src/features/tables/components/TableView";
-import type { TableTab } from "@/src/features/tables/types";
+import { HomeScreen } from "@/src/layouts/HomeScreen";
 
 interface WorkspaceProps {
-  hasConnections: boolean;
-  tabs: TableTab[];
+  showHome: boolean;
+  connections: ConnectionProfile[];
+  activeConnectionId: string | null;
+  onSelectConnection: (id: string) => void;
+  tabs: AppTab[];
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
@@ -23,7 +27,10 @@ interface WorkspaceProps {
 }
 
 export function Workspace({
-  hasConnections,
+  showHome,
+  connections,
+  activeConnectionId,
+  onSelectConnection,
   tabs,
   activeTabId,
   onSelectTab,
@@ -32,28 +39,14 @@ export function Workspace({
 }: WorkspaceProps) {
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
-  if (!hasConnections) {
+  if (showHome || connections.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
-        <Empty className="max-w-md">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <DatabaseZap />
-            </EmptyMedia>
-            <EmptyTitle>No connection selected</EmptyTitle>
-            <EmptyDescription>
-              Create a database connection to browse schemas, run queries, and
-              edit data.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button size="sm" className="gap-2" onClick={onNewConnection}>
-              <Plus className="size-4" />
-              New Connection
-            </Button>
-          </EmptyContent>
-        </Empty>
-      </div>
+      <HomeScreen
+        connections={connections}
+        activeConnectionId={activeConnectionId}
+        onSelectConnection={onSelectConnection}
+        onNewConnection={onNewConnection}
+      />
     );
   }
 
@@ -68,17 +61,21 @@ export function Workspace({
 
       <div className="min-h-0 flex-1">
         {activeTab ? (
-          <TableView key={activeTab.id} tab={activeTab} />
+          activeTab.type === "table" ? (
+            <TableView key={activeTab.id} tab={activeTab} />
+          ) : (
+            <QueryTabView key={activeTab.id} tab={activeTab} />
+          )
         ) : (
           <div className="flex h-full items-center justify-center p-6">
             <Empty className="max-w-md">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <Table2 />
+                  <TerminalSquare />
                 </EmptyMedia>
-                <EmptyTitle>No table open</EmptyTitle>
+                <EmptyTitle>No tab open</EmptyTitle>
                 <EmptyDescription>
-                  Select a table from the sidebar to browse its data.
+                  Select a table from the sidebar, or open a new SQL query.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

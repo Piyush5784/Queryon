@@ -1,4 +1,5 @@
 export interface TableTab {
+  type: "table";
   id: string;
   connectionId: string;
   connectionName: string;
@@ -7,5 +8,5 @@ export interface TableTab {
 }
 
 export function tableTabId(connectionId: string, schema: string, table: string): string {
-  return `${connectionId}::${schema}.${table}`;
+  return `table::${connectionId}::${schema}.${table}`;
 }

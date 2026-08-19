@@ -7,45 +7,67 @@ use crate::domain::table::{service, TableRowsResult};
 use crate::error::AppError;
 use crate::state::ConnectionRegistry;
 
+/// Command parameters carrying arbitrary row/cell data cross the IPC
+/// boundary as JSON-encoded strings rather than structured values —
+/// specta cannot export `serde_json::Value` without infinite recursion
+/// on its own Array/Object variants (see
+/// infrastructure/postgres/executor.rs's `encode_cell`). This decodes
+/// them back to `Value` at the command boundary.
+fn decode_row(row: HashMap<String, String>) -> Result<HashMap<String, JsonValue>, AppError> {
+    row.into_iter()
+        .map(|(k, v)| match serde_json::from_str::<JsonValue>(&v) {
+            Ok(value) => Ok((k, value)),
+            Err(e) => Err(AppError::new(format!("Invalid JSON for column '{k}': {e}"))),
+        })
+        .collect()
+}
+
 #[tauri::command]
+#[specta::specta]
 pub async fn db_fetch_table_rows(
     connection_id: String,
     schema: String,
     table: String,
-    limit: i64,
-    offset: i64,
+    limit: i32,
+    offset: i32,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<TableRowsResult, AppError> {
     let pool = registry
         .get(&connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
-    service::fetch_table_rows(&pool, &schema, &table, limit, offset).await
+    service::fetch_table_rows(&pool, &schema, &table, limit as i64, offset as i64).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn db_update_json_cell(
     connection_id: String,
     schema: String,
     table: String,
-    row: HashMap<String, JsonValue>,
+    row: HashMap<String, String>,
     column: String,
-    value: JsonValue,
+    value: String,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<(), AppError> {
     let pool = registry
         .get(&connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
+    let row = decode_row(row)?;
+    let value: JsonValue = serde_json::from_str(&value)
+        .map_err(|e| AppError::new(format!("Invalid JSON value: {e}")))?;
+
     service::update_json_cell(&pool, &schema, &table, &row, &column, &value).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn db_update_cell_text(
     connection_id: String,
     schema: String,
     table: String,
-    row: HashMap<String, JsonValue>,
+    row: HashMap<String, String>,
     column: String,
     value: Option<String>,
     registry: State<'_, ConnectionRegistry>,
@@ -54,20 +76,24 @@ pub async fn db_update_cell_text(
         .get(&connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
+    let row = decode_row(row)?;
     service::update_cell_text(&pool, &schema, &table, &row, &column, value.as_deref()).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn db_delete_rows(
     connection_id: String,
     schema: String,
     table: String,
-    rows: Vec<HashMap<String, JsonValue>>,
+    rows: Vec<HashMap<String, String>>,
     registry: State<'_, ConnectionRegistry>,
-) -> Result<u64, AppError> {
+) -> Result<u32, AppError> {
     let pool = registry
         .get(&connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
-    service::delete_rows(&pool, &schema, &table, &rows).await
+    let rows = rows.into_iter().map(decode_row).collect::<Result<Vec<_>, _>>()?;
+    let affected = service::delete_rows(&pool, &schema, &table, &rows).await?;
+    Ok(affected as u32)
 }

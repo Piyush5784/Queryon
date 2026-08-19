@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SslMode {
     Disable,
@@ -10,7 +11,7 @@ pub enum SslMode {
     VerifyFull,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionProfile {
     pub id: String,
@@ -38,7 +39,7 @@ impl std::fmt::Debug for ConnectionProfile {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionInfo {
     pub id: String,

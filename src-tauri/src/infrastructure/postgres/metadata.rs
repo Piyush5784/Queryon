@@ -16,7 +16,7 @@ pub async fn list_tables(client: &Client) -> Result<Vec<TableRef>, AppError> {
                     when 'm' then 'materialized_view'
                     else c.relkind::text
                 end as kind,
-                greatest(c.reltuples, 0)::bigint as estimated_rows
+                greatest(c.reltuples, 0)::float8 as estimated_rows
             from pg_catalog.pg_class c
             join pg_catalog.pg_namespace n on n.oid = c.relnamespace
             where c.relkind in ('r', 'v', 'm')

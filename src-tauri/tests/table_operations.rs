@@ -23,6 +23,12 @@ async fn dev_pool() -> deadpool_postgres::Pool {
     build_pool(&dev_profile()).expect("failed to build pool")
 }
 
+/// Row cells cross the service boundary as JSON-encoded strings (see
+/// TableRowsResult's doc comment); this parses one back for assertions.
+fn cell_json(cell: &str) -> serde_json::Value {
+    serde_json::from_str(cell).expect("cell should be valid JSON")
+}
+
 #[tokio::test]
 async fn list_tables_includes_known_seed_tables() {
     let pool = dev_pool().await;
@@ -154,11 +160,11 @@ async fn update_json_cell_writes_and_is_readable_back() {
     let updated_row = result
         .rows
         .iter()
-        .find(|r| r[id_index] == json!(3))
+        .find(|r| cell_json(&r[id_index]) == json!(3))
         .expect("expected to find the row we just updated");
 
     assert_eq!(
-        updated_row[metadata_index],
+        cell_json(&updated_row[metadata_index]),
         json!({ "plan": "enterprise", "seats": 42 })
     );
 
@@ -221,9 +227,9 @@ async fn update_cell_text_writes_a_text_column() {
     let updated_row = result
         .rows
         .iter()
-        .find(|r| r[id_index] == json!(2))
+        .find(|r| cell_json(&r[id_index]) == json!(2))
         .expect("expected to find the row we just updated");
-    assert_eq!(updated_row[name_index], json!("Bob Updated"));
+    assert_eq!(cell_json(&updated_row[name_index]), json!("Bob Updated"));
 
     table_service::update_cell_text(&pool, "public", "users", &row, "full_name", Some("Bob Martinez"))
         .await
@@ -251,9 +257,9 @@ async fn update_cell_text_writes_a_boolean_column() {
     let updated_row = result
         .rows
         .iter()
-        .find(|r| r[id_index] == json!(2))
+        .find(|r| cell_json(&r[id_index]) == json!(2))
         .expect("expected to find the row we just updated");
-    assert_eq!(updated_row[active_index], json!(false));
+    assert_eq!(cell_json(&updated_row[active_index]), json!(false));
 
     table_service::update_cell_text(&pool, "public", "users", &row, "is_active", Some("true"))
         .await
@@ -281,9 +287,9 @@ async fn update_cell_text_sets_null() {
     let updated_row = result
         .rows
         .iter()
-        .find(|r| r[id_index] == json!(2))
+        .find(|r| cell_json(&r[id_index]) == json!(2))
         .expect("expected to find the row we just updated");
-    assert_eq!(updated_row[notes_index], json!(null));
+    assert_eq!(cell_json(&updated_row[notes_index]), json!(null));
 }
 
 #[tokio::test]
@@ -343,7 +349,7 @@ async fn delete_rows_removes_a_single_row() {
         .unwrap();
     let id_index = result.columns.iter().position(|c| c == "id").unwrap();
     assert!(
-        !result.rows.iter().any(|r| r[id_index] == json!(id)),
+        !result.rows.iter().any(|r| cell_json(&r[id_index]) == json!(id)),
         "deleted row should no longer be present"
     );
 }
@@ -368,8 +374,8 @@ async fn delete_rows_removes_multiple_rows_at_once() {
         .await
         .unwrap();
     let id_index = result.columns.iter().position(|c| c == "id").unwrap();
-    assert!(!result.rows.iter().any(|r| r[id_index] == json!(id1)));
-    assert!(!result.rows.iter().any(|r| r[id_index] == json!(id2)));
+    assert!(!result.rows.iter().any(|r| cell_json(&r[id_index]) == json!(id1)));
+    assert!(!result.rows.iter().any(|r| cell_json(&r[id_index]) == json!(id2)));
 }
 
 #[tokio::test]
@@ -450,6 +456,12 @@ async fn update_cell_text_gives_clean_message_for_unique_violation() {
     row.insert("id".to_string(), json!(colliding_id));
 
     let result = table_service::update_cell_text(&pool, "public", "users", &row, "email", Some(&taken_email)).await;
+
+    let client = pool.get().await.unwrap();
+    client
+        .execute("delete from users where full_name = 'Throwaway'", &[])
+        .await
+        .expect("cleanup delete failed");
 
     let err = result.expect_err("colliding with an existing unique email should fail").to_string();
     assert!(!err.contains("db error"), "error message should not leak the raw driver string, got: {err}");

@@ -2,16 +2,19 @@ import { useState } from "react";
 
 import { ConnectionDialog } from "@/src/features/connections/components/ConnectionDialog";
 import type { ConnectionProfile } from "@/src/features/connections/types";
-import { tableTabId, type TableTab } from "@/src/features/tables/types";
+import { createQueryTabId } from "@/src/features/query/types";
+import { tableTabId } from "@/src/features/tables/types";
 import { AppLayout } from "@/src/layouts/AppLayout";
+import type { AppTab } from "@/src/app/tabs";
 import "@/src/app/styles/globals.css";
 
 function App() {
   const [connections, setConnections] = useState<ConnectionProfile[]>([]);
   const [activeConnectionId, setActiveConnectionId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [tabs, setTabs] = useState<TableTab[]>([]);
+  const [tabs, setTabs] = useState<AppTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [showHome, setShowHome] = useState(true);
 
   const activeConnection = connections.find((c) => c.id === activeConnectionId) ?? null;
 
@@ -27,9 +30,35 @@ function App() {
     setTabs((prev) =>
       prev.some((t) => t.id === id)
         ? prev
-        : [...prev, { id, connectionId, connectionName, schema, table }]
+        : [...prev, { type: "table", id, connectionId, connectionName, schema, table }]
     );
     setActiveTabId(id);
+    setShowHome(false);
+  }
+
+  function handleNewQuery() {
+    if (!activeConnectionId) return;
+    const id = createQueryTabId();
+    const connectionName = connections.find((c) => c.id === activeConnectionId)?.name ?? "";
+    const queryNumber = tabs.filter((t) => t.type === "query").length + 1;
+
+    setTabs((prev) => [
+      ...prev,
+      {
+        type: "query",
+        id,
+        connectionId: activeConnectionId,
+        connectionName,
+        title: `Query ${queryNumber}`,
+      },
+    ]);
+    setActiveTabId(id);
+    setShowHome(false);
+  }
+
+  function handleSelectTab(id: string) {
+    setActiveTabId(id);
+    setShowHome(false);
   }
 
   function handleCloseTab(id: string) {
@@ -51,9 +80,12 @@ function App() {
         onSelectConnection={setActiveConnectionId}
         onOpenTable={handleOpenTable}
         onNewConnection={() => setDialogOpen(true)}
+        onNewQuery={handleNewQuery}
+        showHome={showHome}
+        onGoHome={() => setShowHome(true)}
         tabs={tabs}
         activeTabId={activeTabId}
-        onSelectTab={setActiveTabId}
+        onSelectTab={handleSelectTab}
         onCloseTab={handleCloseTab}
       />
 

@@ -1,27 +1,14 @@
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "@/src/lib/tauri/bindings";
+import type {
+  ColumnInfo,
+  ConnectionInfo,
+  ConnectionProfile,
+  TableRef,
+  TableRowsResult as RawTableRowsResult,
+  QueryResult as RawQueryResult,
+} from "@/src/lib/tauri/bindings";
 
-import type { ConnectionProfile } from "@/src/features/connections/types";
-
-export interface ConnectionInfo {
-  id: string;
-  serverVersion: string;
-}
-
-export interface TableRef {
-  schema: string;
-  name: string;
-  kind: "table" | "view" | "materialized_view";
-  estimatedRows: number;
-}
-
-export interface ColumnInfo {
-  name: string;
-  dataType: string;
-  isNullable: boolean;
-  default: string | null;
-  isPrimaryKey: boolean;
-  ordinalPosition: number;
-}
+export type { ColumnInfo, ConnectionInfo, ConnectionProfile, TableRef };
 
 export type CellValue = string | number | boolean | null | Record<string, unknown> | unknown[];
 
@@ -32,51 +19,86 @@ export interface TableRowsResult {
   hasMore: boolean;
 }
 
-export function connect(profile: ConnectionProfile): Promise<ConnectionInfo> {
-  return invoke<ConnectionInfo>("db_connect", { profile });
+export type QueryResult =
+  | {
+      kind: "rows";
+      columns: string[];
+      rows: CellValue[][];
+      rowCount: number;
+      truncated: boolean;
+      durationMs: number;
+    }
+  | {
+      kind: "affected";
+      rowCount: number;
+      durationMs: number;
+    };
+
+function decodeCell(cell: string): CellValue {
+  try {
+    return JSON.parse(cell) as CellValue;
+  } catch {
+    return cell;
+  }
 }
 
-export function testConnection(profile: ConnectionProfile): Promise<ConnectionInfo> {
-  return invoke<ConnectionInfo>("db_test_connection", { profile });
+function decodeRows(rows: string[][]): CellValue[][] {
+  return rows.map((row) => row.map(decodeCell));
 }
 
-export function disconnect(connectionId: string): Promise<void> {
-  return invoke<void>("db_disconnect", { connectionId });
+function encodeRow(row: Record<string, CellValue>): Record<string, string> {
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, JSON.stringify(value)]));
 }
 
-export function listActiveConnections(): Promise<string[]> {
-  return invoke<string[]>("db_list_active_connections");
+async function unwrap<T>(result: { status: "ok"; data: T } | { status: "error"; error: string }): Promise<T> {
+  if (result.status === "error") {
+    throw result.error;
+  }
+  return result.data;
 }
 
-export function listTables(connectionId: string): Promise<TableRef[]> {
-  return invoke<TableRef[]>("db_list_tables", { connectionId });
+export async function connect(profile: ConnectionProfile): Promise<ConnectionInfo> {
+  return unwrap(await commands.dbConnect(profile));
 }
 
-export function getTableColumns(
+export async function testConnection(profile: ConnectionProfile): Promise<ConnectionInfo> {
+  return unwrap(await commands.dbTestConnection(profile));
+}
+
+export async function disconnect(connectionId: string): Promise<void> {
+  await commands.dbDisconnect(connectionId);
+}
+
+export async function listActiveConnections(): Promise<string[]> {
+  return commands.dbListActiveConnections();
+}
+
+export async function listTables(connectionId: string): Promise<TableRef[]> {
+  return unwrap(await commands.dbListTables(connectionId));
+}
+
+export async function getTableColumns(
   connectionId: string,
   schema: string,
   table: string
 ): Promise<ColumnInfo[]> {
-  return invoke<ColumnInfo[]>("db_get_table_columns", { connectionId, schema, table });
+  return unwrap(await commands.dbGetTableColumns(connectionId, schema, table));
 }
 
-export function fetchTableRows(
+export async function fetchTableRows(
   connectionId: string,
   schema: string,
   table: string,
   limit: number,
   offset: number
 ): Promise<TableRowsResult> {
-  return invoke<TableRowsResult>("db_fetch_table_rows", {
-    connectionId,
-    schema,
-    table,
-    limit,
-    offset,
-  });
+  const raw: RawTableRowsResult = await unwrap(
+    await commands.dbFetchTableRows(connectionId, schema, table, limit, offset)
+  );
+  return { ...raw, rows: decodeRows(raw.rows) };
 }
 
-export function updateJsonCell(
+export async function updateJsonCell(
   connectionId: string,
   schema: string,
   table: string,
@@ -84,10 +106,12 @@ export function updateJsonCell(
   column: string,
   value: CellValue
 ): Promise<void> {
-  return invoke<void>("db_update_json_cell", { connectionId, schema, table, row, column, value });
+  await unwrap(
+    await commands.dbUpdateJsonCell(connectionId, schema, table, encodeRow(row), column, JSON.stringify(value))
+  );
 }
 
-export function updateCellText(
+export async function updateCellText(
   connectionId: string,
   schema: string,
   table: string,
@@ -95,14 +119,24 @@ export function updateCellText(
   column: string,
   value: string | null
 ): Promise<void> {
-  return invoke<void>("db_update_cell_text", { connectionId, schema, table, row, column, value });
+  await unwrap(
+    await commands.dbUpdateCellText(connectionId, schema, table, encodeRow(row), column, value)
+  );
 }
 
-export function deleteRows(
+export async function deleteRows(
   connectionId: string,
   schema: string,
   table: string,
   rows: Record<string, CellValue>[]
 ): Promise<number> {
-  return invoke<number>("db_delete_rows", { connectionId, schema, table, rows });
+  return unwrap(await commands.dbDeleteRows(connectionId, schema, table, rows.map(encodeRow)));
+}
+
+export async function executeQuery(connectionId: string, sql: string): Promise<QueryResult> {
+  const raw: RawQueryResult = await unwrap(await commands.dbExecuteQuery(connectionId, sql));
+  if (raw.kind === "affected") {
+    return raw;
+  }
+  return { ...raw, rows: decodeRows(raw.rows) };
 }

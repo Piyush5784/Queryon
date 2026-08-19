@@ -1,9 +1,9 @@
-import { Table2, X } from "lucide-react";
+import { Table2, TerminalSquare, X } from "lucide-react";
 
-import type { TableTab } from "@/src/features/tables/types";
+import type { AppTab } from "@/src/app/tabs";
 
 interface TabBarProps {
-  tabs: TableTab[];
+  tabs: AppTab[];
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
@@ -26,8 +26,17 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: TabBarPro
                 : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
             }`}
           >
-            <Table2 className="size-3.5 shrink-0" />
-            <span className="max-w-40 truncate">{tab.table}</span>
+            {tab.type === "table" ? (
+              <>
+                <Table2 className="size-3.5 shrink-0" />
+                <span className="max-w-40 truncate">{tab.table}</span>
+              </>
+            ) : (
+              <>
+                <TerminalSquare className="size-3.5 shrink-0" />
+                <span className="max-w-40 truncate">{tab.title}</span>
+              </>
+            )}
             <span className="text-[0.65rem] text-muted-foreground/70">{tab.connectionName}</span>
             <button
               type="button"

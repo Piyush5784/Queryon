@@ -14,6 +14,7 @@ fn pool_for(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn db_list_tables(
     connection_id: String,
     registry: State<'_, ConnectionRegistry>,
@@ -23,6 +24,7 @@ pub async fn db_list_tables(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn db_get_table_columns(
     connection_id: String,
     schema: String,
