@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, Eye, History, Loader2, Plug, Star, Table2, Trash2, XCircle } from "lucide-react";
+import { ChevronRight, Eye, History, Loader2, Plug, Plus, Star, Table2, Trash2, XCircle } from "lucide-react";
 
 import {
   SidebarMenuAction,
@@ -31,6 +31,7 @@ interface ConnectionTreeItemProps {
   onOpenTable: (schema: string, table: string) => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (sql: string) => void;
+  onNewQuery: () => void;
 }
 
 export function ConnectionTreeItem({
@@ -43,6 +44,7 @@ export function ConnectionTreeItem({
   onOpenTable,
   onOpenSavedQuery,
   onOpenHistoryEntry,
+  onNewQuery,
 }: ConnectionTreeItemProps) {
   const [expanded, setExpanded] = useState(isActive);
   const [loading, setLoading] = useState(false);
@@ -145,12 +147,14 @@ export function ConnectionTreeItem({
             connectionId={connection.id}
             refreshToken={queryRefreshToken}
             onOpenQuery={onOpenSavedQuery}
+            onNewQuery={onNewQuery}
           />
 
           <QueryHistoryGroup
             connectionId={connection.id}
             refreshToken={queryRefreshToken}
             onOpenQuery={onOpenHistoryEntry}
+            onNewQuery={onNewQuery}
           />
         </SidebarMenuSub>
       )}
@@ -204,10 +208,12 @@ function SavedQueriesGroup({
   connectionId,
   refreshToken,
   onOpenQuery,
+  onNewQuery,
 }: {
   connectionId: string;
   refreshToken: number;
   onOpenQuery: (query: SavedQuery) => void;
+  onNewQuery: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [queries, setQueries] = useState<SavedQuery[] | null>(null);
@@ -240,15 +246,28 @@ function SavedQueriesGroup({
   return (
     <>
       <SidebarMenuSubItem>
-        <button
-          type="button"
-          onClick={() => setOpen((prev) => !prev)}
-          className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent"
-        >
-          <ChevronRight className={`size-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
-          <Star className="size-3" />
-          Saved Queries
-        </button>
+        <div className="group/saved relative flex items-center">
+          <button
+            type="button"
+            onClick={() => setOpen((prev) => !prev)}
+            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent"
+          >
+            <ChevronRight className={`size-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+            <Star className="size-3" />
+            Saved Queries
+          </button>
+          <button
+            type="button"
+            title="New query"
+            onClick={(e) => {
+              e.stopPropagation();
+              onNewQuery();
+            }}
+            className="absolute right-1 flex size-5 items-center justify-center rounded-md opacity-0 hover:bg-sidebar-accent group-hover/saved:opacity-100"
+          >
+            <Plus className="size-3.5" />
+          </button>
+        </div>
       </SidebarMenuSubItem>
       {open && (
         <>
@@ -283,10 +302,12 @@ function QueryHistoryGroup({
   connectionId,
   refreshToken,
   onOpenQuery,
+  onNewQuery,
 }: {
   connectionId: string;
   refreshToken: number;
   onOpenQuery: (sql: string) => void;
+  onNewQuery: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<QueryHistoryEntry[] | null>(null);
@@ -334,11 +355,22 @@ function QueryHistoryGroup({
               type="button"
               title="Clear history"
               onClick={handleClear}
-              className="absolute right-1 flex size-5 items-center justify-center rounded-md opacity-0 hover:bg-sidebar-accent group-hover/history:opacity-100"
+              className="absolute right-6.5 flex size-5 items-center justify-center rounded-md opacity-0 hover:bg-sidebar-accent group-hover/history:opacity-100"
             >
               <Trash2 className="size-3.5" />
             </button>
           )}
+          <button
+            type="button"
+            title="New query"
+            onClick={(e) => {
+              e.stopPropagation();
+              onNewQuery();
+            }}
+            className="absolute right-1 flex size-5 items-center justify-center rounded-md opacity-0 hover:bg-sidebar-accent group-hover/history:opacity-100"
+          >
+            <Plus className="size-3.5" />
+          </button>
         </div>
       </SidebarMenuSubItem>
       {open && (

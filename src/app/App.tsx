@@ -116,10 +116,11 @@ function App() {
     setShowHome(false);
   }
 
-  function handleNewQuery() {
-    if (!activeConnectionId) return;
+  function handleNewQuery(connectionId?: string) {
+    const targetConnectionId = connectionId ?? activeConnectionId;
+    if (!targetConnectionId) return;
     const queryNumber = tabs.filter((t) => t.type === "query").length + 1;
-    openQueryTab(createQueryTabId(), activeConnectionId, `Query ${queryNumber}`);
+    openQueryTab(createQueryTabId(), targetConnectionId, `Query ${queryNumber}`);
   }
 
   function handleOpenSavedQuery(query: SavedQuery) {

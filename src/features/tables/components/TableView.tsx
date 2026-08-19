@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/app/components/ui/select";
+import { CopyButton } from "@/src/components/CopyButton";
 import { ExportButton } from "@/src/components/ExportButton";
 import { DataGrid, type JsonCellMode, type RowEdit } from "@/src/features/tables/components/DataGrid";
 import { JsonInspectorSheet } from "@/src/features/tables/components/JsonViewer/JsonInspectorSheet";
@@ -367,11 +368,19 @@ export function TableView({ tab }: TableViewProps) {
           </span>
         )}
 
-        <ExportButton
-          target={{ kind: "table", connectionId: tab.connectionId, schema: tab.schema, table: tab.table }}
-          fileBaseName={`${tab.schema}_${tab.table}`}
-          disabled={loading && !result}
-        />
+        <div className="flex items-center gap-1.5">
+          <CopyButton
+            columns={result?.columns ?? []}
+            rows={result?.rows ?? []}
+            selectedRowIndices={selectedRowIndices}
+            disabled={loading && !result}
+          />
+          <ExportButton
+            target={{ kind: "table", connectionId: tab.connectionId, schema: tab.schema, table: tab.table }}
+            fileBaseName={`${tab.schema}_${tab.table}`}
+            disabled={loading && !result}
+          />
+        </div>
       </div>
 
       <JsonInspectorSheet

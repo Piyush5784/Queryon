@@ -26,7 +26,7 @@ interface AppLayoutProps {
   onDeleteConnection: (id: string) => void;
   onOpenTable: (connectionId: string, schema: string, table: string) => void;
   onNewConnection: () => void;
-  onNewQuery: () => void;
+  onNewQuery: (connectionId?: string) => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (connectionId: string, sql: string) => void;
   showHome: boolean;
@@ -75,6 +75,7 @@ export function AppLayout({
           onNewConnection={onNewConnection}
           onOpenSavedQuery={onOpenSavedQuery}
           onOpenHistoryEntry={onOpenHistoryEntry}
+          onNewQuery={onNewQuery}
         />
         <SidebarInset className="min-h-0">
           <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-2">
@@ -103,7 +104,7 @@ export function AppLayout({
               </div>
             </div>
             {activeConnection && !showHome && (
-              <Button size="xs" variant="outline" className="gap-1.5" onClick={onNewQuery}>
+              <Button size="xs" variant="outline" className="gap-1.5" onClick={() => onNewQuery()}>
                 <TerminalSquare className="size-3.5" />
                 New Query
               </Button>
