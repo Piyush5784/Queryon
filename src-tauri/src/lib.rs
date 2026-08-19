@@ -4,7 +4,7 @@ pub mod error;
 pub mod infrastructure;
 pub mod state;
 
-use state::ConnectionRegistry;
+use state::{ConnectionRegistry, ExportJobRegistry};
 use tauri_specta::{collect_commands, Builder};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,6 +32,11 @@ pub fn run() {
         commands::query::db_delete_saved_query,
         commands::query::db_list_query_history,
         commands::query::db_clear_query_history,
+        commands::export::export_default_directory,
+        commands::export::export_pick_directory,
+        commands::export::export_run_table,
+        commands::export::export_run_rows,
+        commands::export::export_cancel,
     ]);
 
     #[cfg(debug_assertions)]
@@ -45,7 +50,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(ConnectionRegistry::default())
+        .manage(ExportJobRegistry::default())
         .invoke_handler(builder.invoke_handler())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

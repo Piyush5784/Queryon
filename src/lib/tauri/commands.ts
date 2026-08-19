@@ -3,9 +3,12 @@ import type {
   ColumnInfo,
   ConnectionInfo,
   ConnectionProfile,
+  ExportFormat,
   QueryHistoryEntry,
+  RowsExportRequest,
   SavedConnectionProfile,
   SavedQuery,
+  TableExportRequest,
   TableRef,
   TableRowsResult as RawTableRowsResult,
   QueryResult as RawQueryResult,
@@ -15,9 +18,12 @@ export type {
   ColumnInfo,
   ConnectionInfo,
   ConnectionProfile,
+  ExportFormat,
   QueryHistoryEntry,
+  RowsExportRequest,
   SavedConnectionProfile,
   SavedQuery,
+  TableExportRequest,
   TableRef,
 };
 
@@ -28,6 +34,7 @@ export interface TableRowsResult {
   rows: CellValue[][];
   rowCount: number;
   hasMore: boolean;
+  durationMs: number;
 }
 
 export type QueryResult =
@@ -186,4 +193,24 @@ export async function listQueryHistory(connectionId: string): Promise<QueryHisto
 
 export async function clearQueryHistory(connectionId: string): Promise<void> {
   await unwrap(await commands.dbClearQueryHistory(connectionId));
+}
+
+export async function getExportDefaultDirectory(): Promise<string> {
+  return unwrap(await commands.exportDefaultDirectory());
+}
+
+export async function pickExportDirectory(initialDirectory: string | null): Promise<string | null> {
+  return unwrap(await commands.exportPickDirectory(initialDirectory));
+}
+
+export async function runTableExport(jobId: string, request: TableExportRequest): Promise<void> {
+  await unwrap(await commands.exportRunTable(jobId, request));
+}
+
+export async function runRowsExport(jobId: string, request: RowsExportRequest): Promise<void> {
+  await unwrap(await commands.exportRunRows(jobId, request));
+}
+
+export async function cancelExport(jobId: string): Promise<void> {
+  await commands.exportCancel(jobId);
 }

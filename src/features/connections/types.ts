@@ -1,9 +1,11 @@
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
+export type Engine = "postgres" | "neon" | "my-sql";
+
 export interface ConnectionProfile {
   id: string;
   name: string;
-  driver: "postgres";
+  engine: Engine;
   host: string;
   port: number;
   database: string;
@@ -15,6 +17,9 @@ export interface ConnectionProfile {
 export interface SavedConnectionProfile {
   id: string;
   name: string;
+  // Optional to match the Rust side's #[serde(default)] — connections
+  // saved before the engine field existed load without it.
+  engine?: Engine;
   host: string;
   port: number;
   database: string;
@@ -22,24 +27,39 @@ export interface SavedConnectionProfile {
   sslMode: SslMode;
 }
 
-export const DEFAULT_PG_PORT = 5432;
+export function engineOf(profile: { engine?: Engine }): Engine {
+  return profile.engine ?? "postgres";
+}
 
-export function createEmptyConnectionDraft(): Omit<ConnectionProfile, "id"> {
+export const DEFAULT_PG_PORT = 5432;
+export const DEFAULT_MYSQL_PORT = 3306;
+
+export function defaultPortFor(engine: Engine): number {
+  return engine === "my-sql" ? DEFAULT_MYSQL_PORT : DEFAULT_PG_PORT;
+}
+
+export function urlSchemeFor(engine: Engine): string {
+  return engine === "my-sql" ? "mysql" : "postgres";
+}
+
+export function createEmptyConnectionDraft(engine: Engine): Omit<ConnectionProfile, "id"> {
   return {
     name: "",
-    driver: "postgres",
+    engine,
     host: "localhost",
-    port: DEFAULT_PG_PORT,
+    port: defaultPortFor(engine),
     database: "",
     user: "",
     password: "",
-    sslMode: "disable",
+    // Neon requires TLS; everything else defaults to off for local/dev use.
+    sslMode: engine === "neon" ? "require" : "disable",
   };
 }
 
-export function parsePostgresUrl(
-  raw: string
-): Partial<Omit<ConnectionProfile, "id" | "driver">> | null {
+export function parseConnectionUrl(
+  raw: string,
+  engine: Engine
+): Partial<Omit<ConnectionProfile, "id" | "engine">> | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
@@ -50,17 +70,18 @@ export function parsePostgresUrl(
     return null;
   }
 
-  if (!["postgres:", "postgresql:"].includes(url.protocol)) {
+  const validSchemes = engine === "my-sql" ? ["mysql:"] : ["postgres:", "postgresql:"];
+  if (!validSchemes.includes(url.protocol)) {
     return null;
   }
 
   const database = decodeURIComponent(url.pathname.replace(/^\//, ""));
-  const sslModeParam = url.searchParams.get("sslmode");
+  const sslModeParam = url.searchParams.get("sslmode") ?? url.searchParams.get("ssl-mode");
   const sslMode = isSslMode(sslModeParam) ? sslModeParam : undefined;
 
-  const result: Partial<Omit<ConnectionProfile, "id" | "driver">> = {
+  const result: Partial<Omit<ConnectionProfile, "id" | "engine">> = {
     host: url.hostname || undefined,
-    port: url.port ? Number(url.port) : DEFAULT_PG_PORT,
+    port: url.port ? Number(url.port) : defaultPortFor(engine),
     database: database || undefined,
     user: url.username ? decodeURIComponent(url.username) : undefined,
     password: url.password ? decodeURIComponent(url.password) : undefined,
@@ -69,7 +90,7 @@ export function parsePostgresUrl(
 
   return Object.fromEntries(
     Object.entries(result).filter(([, v]) => v !== undefined)
-  ) as Partial<Omit<ConnectionProfile, "id" | "driver">>;
+  ) as Partial<Omit<ConnectionProfile, "id" | "engine">>;
 }
 
 function isSslMode(value: string | null): value is SslMode {
@@ -80,6 +101,7 @@ function isSslMode(value: string | null): value is SslMode {
 }
 
 export function toDisplayUrl(profile: {
+  engine?: Engine;
   host: string;
   port: number;
   database: string;
@@ -89,5 +111,5 @@ export function toDisplayUrl(profile: {
   const auth = profile.user ? `${profile.user}@` : "";
   const db = profile.database ? `/${profile.database}` : "";
   const ssl = profile.sslMode && profile.sslMode !== "disable" ? `?sslmode=${profile.sslMode}` : "";
-  return `postgres://${auth}${profile.host}:${profile.port}${db}${ssl}`;
+  return `${urlSchemeFor(engineOf(profile))}://${auth}${profile.host}:${profile.port}${db}${ssl}`;
 }

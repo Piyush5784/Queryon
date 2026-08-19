@@ -13,8 +13,6 @@ import {
 } from "@/src/app/components/ui/sidebar";
 import { ConnectionTreeItem } from "@/src/features/connections/components/ConnectionTreeItem";
 import type { SavedConnectionProfile } from "@/src/features/connections/types";
-import { QueryHistorySection } from "@/src/features/query/components/QueryHistorySection";
-import { SavedQueriesSection } from "@/src/features/query/components/SavedQueriesSection";
 import type { SavedQuery } from "@/src/features/query/api";
 
 interface SidebarProps {
@@ -27,7 +25,7 @@ interface SidebarProps {
   onOpenTable: (connectionId: string, schema: string, table: string) => void;
   onNewConnection: () => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
-  onOpenHistoryEntry: (sql: string) => void;
+  onOpenHistoryEntry: (connectionId: string, sql: string) => void;
 }
 
 export function Sidebar({
@@ -81,28 +79,19 @@ export function Sidebar({
                     isActive={conn.id === activeConnectionId}
                     isConnected={connectedIds.has(conn.id)}
                     isConnecting={connectingId === conn.id}
+                    queryRefreshToken={queryRefreshToken}
                     onSelect={() => onSelectConnection(conn.id)}
                     onOpenTable={(schema, table) =>
                       onOpenTable(conn.id, schema, table)
                     }
+                    onOpenSavedQuery={onOpenSavedQuery}
+                    onOpenHistoryEntry={(sql) => onOpenHistoryEntry(conn.id, sql)}
                   />
                 ))}
               </SidebarMenu>
             )}
           </SidebarGroupContent>
         </SidebarGroup>
-
-        <SavedQueriesSection
-          connectionId={activeConnectionId}
-          refreshToken={queryRefreshToken}
-          onOpenQuery={onOpenSavedQuery}
-        />
-
-        <QueryHistorySection
-          connectionId={activeConnectionId}
-          refreshToken={queryRefreshToken}
-          onOpenQuery={onOpenHistoryEntry}
-        />
       </SidebarContent>
     </SidebarPrimitive>
   );

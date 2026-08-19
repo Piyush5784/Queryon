@@ -24,6 +24,30 @@ export const commands = {
 	dbDeleteSavedQuery: (queryId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_delete_saved_query", { queryId })),
 	dbListQueryHistory: (connectionId: string) => typedError<QueryHistoryEntry[], AppError>(__TAURI_INVOKE("db_list_query_history", { connectionId })),
 	dbClearQueryHistory: (connectionId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_clear_query_history", { connectionId })),
+	/**
+	 *  Returns the OS's Downloads folder (or the home directory as a
+	 *  fallback) to prepopulate the export dialog's output directory field.
+	 */
+	exportDefaultDirectory: () => typedError<string, AppError>(__TAURI_INVOKE("export_default_directory")),
+	/**
+	 *  Opens the OS's native folder picker, defaulted to `initial_directory`
+	 *  when given. Returns `None` if the user cancels.
+	 */
+	exportPickDirectory: (initialDirectory: string | null) => typedError<string | null, AppError>(__TAURI_INVOKE("export_pick_directory", { initialDirectory })),
+	/**
+	 *  Starts a background chunked export of a table's rows, streaming
+	 *  directly from the database. Returns immediately with a job id; progress
+	 *  arrives via `export:progress`/`export:done`/`export:error`/
+	 *  `export:cancelled` events carrying that same job id.
+	 */
+	exportRunTable: (jobId: string, request: TableExportRequest) => typedError<null, AppError>(__TAURI_INVOKE("export_run_table", { jobId, request })),
+	/**
+	 *  Starts a background export of already-fetched rows (e.g. a query
+	 *  result). No DB access — just writes what the frontend already has, in
+	 *  chunks, off the main thread so the UI never blocks.
+	 */
+	exportRunRows: (jobId: string, request: RowsExportRequest) => typedError<null, AppError>(__TAURI_INVOKE("export_run_rows", { jobId, request })),
+	exportCancel: (jobId: string) => __TAURI_INVOKE<void>("export_cancel", { jobId }),
 };
 
 /* Types */
@@ -46,6 +70,7 @@ export type ConnectionInfo = {
 export type ConnectionProfile = {
 	id: string,
 	name: string,
+	engine: Engine,
 	host: string,
 	port: number,
 	database: string,
@@ -53,6 +78,16 @@ export type ConnectionProfile = {
 	password: string,
 	sslMode: SslMode,
 };
+
+/**
+ *  Which `DatabaseDriver` a profile connects through. `Neon` is not a
+ *  distinct wire protocol — it's Postgres with Neon-friendly defaults
+ *  (see `connections/types.ts`'s draft builder) — so it maps to the same
+ *  `PostgresDriver` as `Postgres` in `domain/connection/service.rs`.
+ */
+export type Engine = "postgres" | "neon" | "my-sql";
+
+export type ExportFormat = "csv" | "json" | "sql";
 
 export type QueryHistoryEntry = {
 	id: string,
@@ -74,9 +109,25 @@ export type QueryHistoryStatus = "success" | "error";
  */
 export type QueryResult = { kind: "rows"; columns: string[]; rows: string[][]; rowCount: number; truncated: boolean; durationMs: number } | { kind: "affected"; rowCount: number; durationMs: number };
 
+export type RowsExportRequest = {
+	columns: string[],
+	/**
+	 *  Each cell already JSON-encoded as a string, same convention as
+	 *  every other row payload crossing the IPC boundary (see
+	 *  `TableRowsResult`'s doc comment).
+	 */
+	rows: string[][],
+	directory: string,
+	fileName: string,
+	format: ExportFormat,
+	prettyPrint: boolean,
+	deleteOnAbort: boolean,
+};
+
 export type SavedConnectionProfile = {
 	id: string,
 	name: string,
+	engine?: Engine,
 	host: string,
 	port: number,
 	database: string,
@@ -94,6 +145,18 @@ export type SavedQuery = {
 };
 
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
+
+export type TableExportRequest = {
+	connectionId: string,
+	schema: string,
+	table: string,
+	directory: string,
+	fileName: string,
+	format: ExportFormat,
+	prettyPrint: boolean,
+	chunkSize: number,
+	deleteOnAbort: boolean,
+};
 
 export type TableRef = {
 	schema: string,
@@ -116,6 +179,7 @@ export type TableRowsResult = {
 	rows: string[][],
 	rowCount: number,
 	hasMore: boolean,
+	durationMs: number,
 };
 
 /* Tauri Specta runtime */

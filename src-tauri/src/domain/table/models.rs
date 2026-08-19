@@ -15,4 +15,5 @@ pub struct TableRowsResult {
     pub rows: Vec<Vec<String>>,
     pub row_count: u32,
     pub has_more: bool,
+    pub duration_ms: u32,
 }

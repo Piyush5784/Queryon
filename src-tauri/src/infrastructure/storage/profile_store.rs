@@ -63,12 +63,13 @@ fn apply_remove(profiles: &mut Vec<SavedConnectionProfile>, connection_id: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::SslMode;
+    use crate::domain::connection::{Engine, SslMode};
 
     fn profile(id: &str, name: &str) -> SavedConnectionProfile {
         SavedConnectionProfile {
             id: id.to_string(),
             name: name.to_string(),
+            engine: Engine::Postgres,
             host: "localhost".to_string(),
             port: 5432,
             database: "devdb".to_string(),

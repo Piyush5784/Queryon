@@ -1,0 +1,280 @@
+use rust_decimal::Decimal;
+use serde_json::Value as JsonValue;
+use sqlx::mysql::{MySqlArguments, MySqlPool, MySqlRow};
+use sqlx::{Arguments, AssertSqlSafe, Column, Row, TypeInfo};
+
+use crate::domain::query::RawQueryResult;
+use crate::domain::table::TableRowsResult;
+use crate::error::AppError;
+
+pub async fn fetch_rows(
+    pool: &MySqlPool,
+    schema: &str,
+    table: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<TableRowsResult, AppError> {
+    let sql = format!(
+        "select * from {} limit ? offset ?",
+        quote_qualified(schema, table)
+    );
+
+    let rows = sqlx::query(AssertSqlSafe(sql))
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to fetch rows: {}", clean_mysql_error(&e))))?;
+
+    let columns = rows
+        .first()
+        .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    let row_count = rows.len();
+    let has_more = row_count as i64 == limit;
+
+    let encoded_rows = rows
+        .iter()
+        .map(|row| {
+            (0..row.len())
+                .map(|i| crate::domain::query::encode_cell(mysql_value_to_json(row, i)))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    Ok(TableRowsResult {
+        columns,
+        rows: encoded_rows,
+        row_count: row_count as u32,
+        has_more,
+        // Overwritten by the command layer, which times the full
+        // driver-lookup + fetch round trip; see commands/table.rs.
+        duration_ms: 0,
+    })
+}
+
+pub async fn execute_query(pool: &MySqlPool, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {
+    if !looks_like_select(sql) {
+        let result = sqlx::query(AssertSqlSafe(sql))
+            .execute(pool)
+            .await
+            .map_err(|e| AppError::new(clean_mysql_error(&e)))?;
+        return Ok(RawQueryResult::Affected { row_count: result.rows_affected() });
+    }
+
+    let rows = sqlx::query(AssertSqlSafe(sql))
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AppError::new(clean_mysql_error(&e)))?;
+
+    let columns = rows
+        .first()
+        .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let row_count = rows.len();
+    let json_rows = rows
+        .iter()
+        .take(max_rows)
+        .map(|row| (0..row.len()).map(|i| mysql_value_to_json(row, i)).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+
+    Ok(RawQueryResult::Rows { columns, rows: json_rows, row_count })
+}
+
+fn looks_like_select(sql: &str) -> bool {
+    let trimmed = sql.trim_start().to_lowercase();
+    trimmed.starts_with("select") || trimmed.starts_with("show") || trimmed.starts_with("describe")
+        || trimmed.starts_with("explain") || trimmed.starts_with("with")
+}
+
+pub async fn update_json_cell(
+    pool: &MySqlPool,
+    schema: &str,
+    table: &str,
+    pk_values: &[(String, JsonValue)],
+    column: &str,
+    value: &JsonValue,
+) -> Result<(), AppError> {
+    let value_text = value.to_string();
+
+    let mut args = MySqlArguments::default();
+    let _ = args.add(&value_text);
+    let where_clause = append_pk_params(&mut args, pk_values);
+
+    let sql = format!(
+        "update {} set {} = ? where {}",
+        quote_qualified(schema, table),
+        quote_ident(column),
+        where_clause
+    );
+
+    execute_single_row_update(pool, &sql, args, "update cell").await
+}
+
+pub async fn update_cell_text(
+    pool: &MySqlPool,
+    schema: &str,
+    table: &str,
+    pk_values: &[(String, JsonValue)],
+    column: &str,
+    new_value: Option<&str>,
+) -> Result<(), AppError> {
+    let mut args = MySqlArguments::default();
+    let _ = args.add(new_value.map(|s| s.to_string()));
+    let where_clause = append_pk_params(&mut args, pk_values);
+
+    let sql = format!(
+        "update {} set {} = ? where {}",
+        quote_qualified(schema, table),
+        quote_ident(column),
+        where_clause
+    );
+
+    execute_single_row_update(pool, &sql, args, "update cell").await
+}
+
+pub async fn delete_rows(
+    pool: &MySqlPool,
+    schema: &str,
+    table: &str,
+    rows_pk_values: &[Vec<(String, JsonValue)>],
+) -> Result<u64, AppError> {
+    if rows_pk_values.is_empty() {
+        return Ok(0);
+    }
+
+    let mut args = MySqlArguments::default();
+    let mut row_clauses: Vec<String> = Vec::with_capacity(rows_pk_values.len());
+
+    for pk_values in rows_pk_values {
+        let mut clause_parts = Vec::with_capacity(pk_values.len());
+        for (pk_col, pk_value) in pk_values {
+            let _ = args.add(json_pk_to_text_param(pk_value));
+            clause_parts.push(format!("cast({} as char) = ?", quote_ident(pk_col)));
+        }
+        row_clauses.push(format!("({})", clause_parts.join(" and ")));
+    }
+
+    let where_clause = row_clauses.join(" or ");
+
+    let sql = format!(
+        "delete from {} where {}",
+        quote_qualified(schema, table),
+        where_clause
+    );
+
+    let result = sqlx::query_with(AssertSqlSafe(sql), args)
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to delete rows: {}", clean_mysql_error(&e))))?;
+
+    let affected = result.rows_affected();
+    let expected = rows_pk_values.len() as u64;
+    if affected != expected {
+        return Err(AppError::new(format!(
+            "Expected to delete {expected} row(s) but {affected} matched — the data may have changed. Refresh and try again."
+        )));
+    }
+
+    Ok(affected)
+}
+
+fn append_pk_params(args: &mut MySqlArguments, pk_values: &[(String, JsonValue)]) -> String {
+    let mut where_clause = String::new();
+    for (i, (pk_col, pk_value)) in pk_values.iter().enumerate() {
+        if i > 0 {
+            where_clause.push_str(" and ");
+        }
+        let _ = args.add(json_pk_to_text_param(pk_value));
+        where_clause.push_str(&format!("cast({} as char) = ?", quote_ident(pk_col)));
+    }
+    where_clause
+}
+
+async fn execute_single_row_update(
+    pool: &MySqlPool,
+    sql: &str,
+    args: MySqlArguments,
+    action: &str,
+) -> Result<(), AppError> {
+    let result = sqlx::query_with(AssertSqlSafe(sql), args)
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to {action}: {}", clean_mysql_error(&e))))?;
+
+    let affected = result.rows_affected();
+    if affected == 0 {
+        return Err(AppError::new(
+            "No matching row found — it may have been deleted or modified.",
+        ));
+    }
+    if affected > 1 {
+        return Err(AppError::new(
+            "Update matched more than one row — refusing to apply to avoid unintended changes.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn json_pk_to_text_param(value: &JsonValue) -> Option<String> {
+    match value {
+        JsonValue::String(s) => Some(s.clone()),
+        JsonValue::Number(n) => Some(n.to_string()),
+        JsonValue::Bool(b) => Some(b.to_string()),
+        JsonValue::Null => None,
+        _ => Some(value.to_string()),
+    }
+}
+
+fn quote_ident(ident: &str) -> String {
+    format!("`{}`", ident.replace('`', "``"))
+}
+
+fn quote_qualified(_schema: &str, table: &str) -> String {
+    quote_ident(table)
+}
+
+fn clean_mysql_error(err: &sqlx::Error) -> String {
+    crate::error::describe_mysql_error(err)
+}
+
+fn mysql_value_to_json(row: &MySqlRow, idx: usize) -> JsonValue {
+    let type_name = row.column(idx).type_info().name();
+
+    macro_rules! try_get {
+        ($t:ty) => {
+            row.try_get::<Option<$t>, _>(idx).ok().flatten()
+        };
+    }
+
+    match type_name {
+        "BOOLEAN" => try_get!(bool).map(JsonValue::from).unwrap_or(JsonValue::Null),
+        "TINYINT" | "TINYINT UNSIGNED" | "SMALLINT" | "SMALLINT UNSIGNED" | "MEDIUMINT"
+        | "MEDIUMINT UNSIGNED" | "INT" => try_get!(i32).map(JsonValue::from).unwrap_or(JsonValue::Null),
+        "INT UNSIGNED" | "BIGINT" => try_get!(i64).map(JsonValue::from).unwrap_or(JsonValue::Null),
+        "BIGINT UNSIGNED" => try_get!(u64).map(JsonValue::from).unwrap_or(JsonValue::Null),
+        "FLOAT" => try_get!(f32).map(JsonValue::from).unwrap_or(JsonValue::Null),
+        "DOUBLE" => try_get!(f64).map(JsonValue::from).unwrap_or(JsonValue::Null),
+        "DECIMAL" => try_get!(Decimal)
+            .map(|d| JsonValue::String(d.to_string()))
+            .unwrap_or(JsonValue::Null),
+        "JSON" => try_get!(sqlx::types::Json<JsonValue>)
+            .map(|j| j.0)
+            .unwrap_or(JsonValue::Null),
+        "DATE" => try_get!(chrono::NaiveDate)
+            .map(|v| JsonValue::String(v.to_string()))
+            .unwrap_or(JsonValue::Null),
+        "TIME" => try_get!(chrono::NaiveTime)
+            .map(|v| JsonValue::String(v.to_string()))
+            .unwrap_or(JsonValue::Null),
+        "DATETIME" => try_get!(chrono::NaiveDateTime)
+            .map(|v| JsonValue::String(v.to_string()))
+            .unwrap_or(JsonValue::Null),
+        "TIMESTAMP" => try_get!(chrono::DateTime<chrono::Utc>)
+            .map(|v| JsonValue::String(v.to_rfc3339()))
+            .unwrap_or(JsonValue::Null),
+        _ => try_get!(String).map(JsonValue::String).unwrap_or(JsonValue::Null),
+    }
+}

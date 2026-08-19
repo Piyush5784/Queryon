@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use serde_json::Value as JsonValue;
 use tauri::State;
@@ -36,7 +37,12 @@ pub async fn db_fetch_table_rows(
         .get(&connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
-    service::fetch_table_rows(driver.as_ref(), &schema, &table, limit as i64, offset as i64).await
+    let start = Instant::now();
+    let mut result =
+        service::fetch_table_rows(driver.as_ref(), &schema, &table, limit as i64, offset as i64).await?;
+    result.duration_ms = start.elapsed().as_millis() as u32;
+
+    Ok(result)
 }
 
 #[tauri::command]

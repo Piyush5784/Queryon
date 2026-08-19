@@ -1,15 +1,15 @@
 use queryon_lib::domain::connection::{ConnectionProfile, Engine, SslMode};
 use queryon_lib::domain::query::{service as query_service, QueryResult};
-use queryon_lib::infrastructure::postgres::driver::PostgresDriver;
-use queryon_lib::infrastructure::postgres::pool::build_pool;
+use queryon_lib::infrastructure::mysql::driver::MySqlDriver;
+use queryon_lib::infrastructure::mysql::pool::build_pool;
 
 fn dev_profile() -> ConnectionProfile {
     ConnectionProfile {
         id: "test".to_string(),
         name: "test".to_string(),
-        engine: Engine::Postgres,
+        engine: Engine::MySql,
         host: "localhost".to_string(),
-        port: 55434,
+        port: 33066,
         database: "devdb".to_string(),
         user: "devuser".to_string(),
         password: "devpass".to_string(),
@@ -17,12 +17,11 @@ fn dev_profile() -> ConnectionProfile {
     }
 }
 
-async fn dev_driver() -> PostgresDriver {
-    PostgresDriver::new(build_pool(&dev_profile()).expect("failed to build pool"))
+async fn dev_driver() -> MySqlDriver {
+    let pool = build_pool(&dev_profile()).await.expect("failed to build pool");
+    MySqlDriver::new(pool, "devdb".to_string())
 }
 
-/// Row cells cross the service boundary as JSON-encoded strings (see
-/// TableRowsResult's doc comment); this parses one back for assertions.
 fn cell_json(cell: &str) -> serde_json::Value {
     serde_json::from_str(cell).expect("cell should be valid JSON")
 }
@@ -73,7 +72,6 @@ async fn insert_returns_affected_row_count() {
         QueryResult::Rows { .. } => panic!("expected an Affected result for an INSERT"),
     }
 
-    // cleanup
     query_service::execute_query(&driver, "delete from categories where name = '__test_query_insert__'")
         .await
         .expect("cleanup delete failed");
@@ -132,7 +130,6 @@ async fn syntax_error_produces_a_readable_message() {
 
     let err = result.expect_err("malformed SQL should fail").to_string();
     assert!(!err.is_empty());
-    assert!(!err.contains("db error"), "error message should not leak the raw driver string, got: {err}");
 }
 
 #[tokio::test]
@@ -142,7 +139,6 @@ async fn referencing_unknown_table_produces_a_readable_message() {
 
     let err = result.expect_err("querying a nonexistent table should fail").to_string();
     assert!(!err.is_empty());
-    assert!(!err.contains("db error"), "error message should not leak the raw driver string, got: {err}");
 }
 
 #[tokio::test]

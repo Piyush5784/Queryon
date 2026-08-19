@@ -38,4 +38,7 @@ specta-typescript = "0.0.12"
 tauri-plugin-store = "2"
 keyring = "4"
 async-trait = "0.1"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "mysql", "chrono", "json", "rust_decimal"] }
+rust_decimal = "1"
+tauri-plugin-dialog = "2"
 

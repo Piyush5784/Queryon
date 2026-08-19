@@ -125,10 +125,9 @@ function App() {
     openQueryTab(`query::saved::${query.id}`, query.connectionId, query.title, query.sql);
   }
 
-  function handleOpenHistoryEntry(sql: string) {
-    if (!activeConnectionId) return;
-    const id = `query::history::${activeConnectionId}::${hashSql(sql)}`;
-    openQueryTab(id, activeConnectionId, "History", sql);
+  function handleOpenHistoryEntry(connectionId: string, sql: string) {
+    const id = `query::history::${connectionId}::${hashSql(sql)}`;
+    openQueryTab(id, connectionId, "History", sql);
   }
 
   function handleQueryActivity() {
@@ -151,7 +150,7 @@ function App() {
   }
 
   return (
-    <>
+    <div className="h-full">
       <AppLayout
         connections={connections}
         connectedIds={connectedIds}
@@ -181,7 +180,7 @@ function App() {
         onOpenChange={setDialogOpen}
         onConnected={handleConnected}
       />
-    </>
+    </div>
   );
 }
 

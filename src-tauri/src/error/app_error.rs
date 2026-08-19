@@ -74,6 +74,49 @@ pub fn describe_pg_error(err: &tokio_postgres::Error) -> String {
     }
 }
 
+/// Turns a query/execution-level sqlx MySQL error into a message a user
+/// can act on, mirroring `describe_pg_error`'s SQLSTATE-based approach —
+/// MySQL exposes both a SQLSTATE-like code and its own numeric error code
+/// (see https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html);
+/// the numeric code is the more reliable of the two to match on.
+pub fn describe_mysql_error(err: &sqlx::Error) -> String {
+    let Some(db_error) = err.as_database_error() else {
+        return clean_mysql_error(&err.to_string());
+    };
+    let Some(mysql_error) = db_error.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>() else {
+        return clean_mysql_error(&db_error.to_string());
+    };
+
+    match mysql_error.number() {
+        1048 => "Column cannot be empty — it does not allow NULL.".to_string(),
+        1451 | 1452 => {
+            "This value doesn't match any row in the referenced table — check the related record exists."
+                .to_string()
+        }
+        1062 => "A row with this value already exists — it must be unique.".to_string(),
+        3819 | 4025 => "This value violates a check constraint.".to_string(),
+        1406 => "This value is too long for the column.".to_string(),
+        1264 => "This value is out of range for the column's type.".to_string(),
+        1366 => "This value isn't valid for the column's type.".to_string(),
+        _ => mysql_error.message().to_string(),
+    }
+}
+
+pub fn clean_mysql_error(raw: &str) -> String {
+    if raw.contains("Access denied") {
+        "Authentication failed — check your username and password.".to_string()
+    } else if raw.contains("Connection refused") {
+        "Connection refused — check the host and port, and that the server is running."
+            .to_string()
+    } else if raw.contains("timed out") {
+        "Connection timed out — check the host and port, and your network/firewall.".to_string()
+    } else if raw.contains("Unknown database") {
+        "Database does not exist.".to_string()
+    } else {
+        raw.to_string()
+    }
+}
+
 pub fn clean_postgres_error(raw: &str) -> String {
     if raw.contains("password authentication failed") {
         "Authentication failed — check your username and password.".to_string()

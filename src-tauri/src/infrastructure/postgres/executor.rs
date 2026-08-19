@@ -58,6 +58,9 @@ pub async fn fetch_rows(
         rows: encoded_rows,
         row_count: row_count as u32,
         has_more,
+        // Overwritten by the command layer, which times the full
+        // driver-lookup + fetch round trip; see commands/table.rs.
+        duration_ms: 0,
     })
 }
 

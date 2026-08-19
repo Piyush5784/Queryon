@@ -11,11 +11,24 @@ pub enum SslMode {
     VerifyFull,
 }
 
+/// Which `DatabaseDriver` a profile connects through. `Neon` is not a
+/// distinct wire protocol — it's Postgres with Neon-friendly defaults
+/// (see `connections/types.ts`'s draft builder) — so it maps to the same
+/// `PostgresDriver` as `Postgres` in `domain/connection/service.rs`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum Engine {
+    Postgres,
+    Neon,
+    MySql,
+}
+
 #[derive(Clone, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionProfile {
     pub id: String,
     pub name: String,
+    pub engine: Engine,
     pub host: String,
     pub port: u16,
     pub database: String,
@@ -29,6 +42,7 @@ impl std::fmt::Debug for ConnectionProfile {
         f.debug_struct("ConnectionProfile")
             .field("id", &self.id)
             .field("name", &self.name)
+            .field("engine", &self.engine)
             .field("host", &self.host)
             .field("port", &self.port)
             .field("database", &self.database)
@@ -46,11 +60,17 @@ pub struct ConnectionInfo {
     pub server_version: String,
 }
 
+fn default_engine() -> Engine {
+    Engine::Postgres
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedConnectionProfile {
     pub id: String,
     pub name: String,
+    #[serde(default = "default_engine")]
+    pub engine: Engine,
     pub host: String,
     pub port: u16,
     pub database: String,
@@ -63,6 +83,7 @@ impl SavedConnectionProfile {
         Self {
             id: profile.id.clone(),
             name: profile.name.clone(),
+            engine: profile.engine,
             host: profile.host.clone(),
             port: profile.port,
             database: profile.database.clone(),
@@ -75,6 +96,7 @@ impl SavedConnectionProfile {
         ConnectionProfile {
             id: self.id,
             name: self.name,
+            engine: self.engine,
             host: self.host,
             port: self.port,
             database: self.database,

@@ -23,6 +23,14 @@ import {
   AlertDialogTitle,
 } from "@/src/app/components/ui/alert-dialog";
 import { Button } from "@/src/app/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/src/app/components/ui/select";
+import { ExportButton } from "@/src/components/ExportButton";
 import { DataGrid, type JsonCellMode, type PendingEdit } from "@/src/features/tables/components/DataGrid";
 import { JsonInspectorSheet } from "@/src/features/tables/components/JsonViewer/JsonInspectorSheet";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
@@ -50,10 +58,12 @@ interface JsonSheetState {
   mode: JsonCellMode;
 }
 
-const PAGE_SIZE = 200;
+const PAGE_SIZE_OPTIONS = [50, 100, 200, 500];
+const DEFAULT_PAGE_SIZE = 200;
 
 export function TableView({ tab }: TableViewProps) {
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TableRowsResult | null>(null);
@@ -76,7 +86,7 @@ export function TableView({ tab }: TableViewProps) {
     setLoading(true);
     setError(null);
 
-    fetchTableRows(tab.connectionId, tab.schema, tab.table, PAGE_SIZE, page * PAGE_SIZE)
+    fetchTableRows(tab.connectionId, tab.schema, tab.table, pageSize, page * pageSize)
       .then((res) => {
         if (!cancelled) setResult(res);
       })
@@ -90,7 +100,7 @@ export function TableView({ tab }: TableViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [tab.connectionId, tab.schema, tab.table, page]);
+  }, [tab.connectionId, tab.schema, tab.table, page, pageSize]);
 
   function resetPendingState() {
     setPendingEdit(null);
@@ -103,7 +113,7 @@ export function TableView({ tab }: TableViewProps) {
     setError(null);
     setLoading(true);
     resetPendingState();
-    fetchTableRows(tab.connectionId, tab.schema, tab.table, PAGE_SIZE, page * PAGE_SIZE)
+    fetchTableRows(tab.connectionId, tab.schema, tab.table, pageSize, page * pageSize)
       .then(setResult)
       .catch((err) => setError(toErrorMessage(err)))
       .finally(() => setLoading(false));
@@ -112,6 +122,12 @@ export function TableView({ tab }: TableViewProps) {
   function changePage(next: number) {
     resetPendingState();
     setPage(next);
+  }
+
+  function changePageSize(next: number) {
+    resetPendingState();
+    setPageSize(next);
+    setPage(0);
   }
 
   async function handleSaveEdit() {
@@ -166,7 +182,6 @@ export function TableView({ tab }: TableViewProps) {
           <span className="font-medium text-foreground">
             {tab.schema}.{tab.table}
           </span>
-          {result && <span>{result.rowCount} rows on this page</span>}
         </div>
         <div className="flex items-center gap-1">
           {selectedCount > 0 && (
@@ -183,23 +198,6 @@ export function TableView({ tab }: TableViewProps) {
           )}
           <Button variant="ghost" size="icon-sm" onClick={refresh} disabled={loading}>
             <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => changePage(Math.max(0, page - 1))}
-            disabled={page === 0 || loading}
-          >
-            <ChevronLeft className="size-3.5" />
-          </Button>
-          <span className="w-8 text-center text-xs text-muted-foreground">{page + 1}</span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => changePage(page + 1)}
-            disabled={!result?.hasMore || loading}
-          >
-            <ChevronRight className="size-3.5" />
           </Button>
         </div>
       </div>
@@ -229,7 +227,13 @@ export function TableView({ tab }: TableViewProps) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1">
+        {loading && result && (
+          <div className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-primary/20">
+            <div className="h-full w-1/3 animate-[loading-bar_1s_ease-in-out_infinite] bg-primary" />
+          </div>
+        )}
+
         {loading && !result && (
           <div className="flex h-full items-center justify-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
@@ -279,6 +283,63 @@ export function TableView({ tab }: TableViewProps) {
             }}
           />
         )}
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t px-3 py-1.5">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => changePage(Math.max(0, page - 1))}
+            disabled={page === 0 || loading}
+          >
+            <ChevronLeft className="size-3.5" />
+          </Button>
+          <span className="text-xs text-muted-foreground">Page {page + 1}</span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => changePage(page + 1)}
+            disabled={!result?.hasMore || loading}
+          >
+            <ChevronRight className="size-3.5" />
+          </Button>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(value) => changePageSize(Number(value))}
+            disabled={loading}
+          >
+            <SelectTrigger size="sm" className="h-7 w-[130px] text-xs">
+              {loading ? (
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <Loader2 className="size-3 animate-spin" />
+                  Loading…
+                </span>
+              ) : (
+                <SelectValue />
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size} rows / page
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {result && (
+          <span className="text-xs text-muted-foreground">
+            {result.rowCount} rows on this page · {result.durationMs}ms
+          </span>
+        )}
+
+        <ExportButton
+          target={{ kind: "table", connectionId: tab.connectionId, schema: tab.schema, table: tab.table }}
+          fileBaseName={`${tab.schema}_${tab.table}`}
+          disabled={loading && !result}
+        />
       </div>
 
       <JsonInspectorSheet

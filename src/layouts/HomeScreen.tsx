@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Database, Loader2, Plug, Plus, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, Database, Loader2, Plus, Trash2, XCircle } from "lucide-react";
 
 import {
   AlertDialog,
@@ -28,7 +28,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/src/app/components/ui/empty";
-import { toDisplayUrl, type SavedConnectionProfile } from "@/src/features/connections/types";
+import { EngineIcon } from "@/src/features/connections/components/EngineIcon";
+import { engineOf, toDisplayUrl, type SavedConnectionProfile } from "@/src/features/connections/types";
 
 interface HomeScreenProps {
   connections: SavedConnectionProfile[];
@@ -121,7 +122,7 @@ export function HomeScreen({
               >
                 <CardHeader>
                   <div className="flex items-center gap-2">
-                    <Plug className="size-4 shrink-0 text-muted-foreground" />
+                    <EngineIcon engine={engineOf(conn)} className="size-4 shrink-0" />
                     <CardTitle className="truncate">{conn.name}</CardTitle>
                     <Button
                       variant="ghost"

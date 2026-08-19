@@ -5,22 +5,32 @@ use tauri::{AppHandle, Wry};
 
 use crate::domain::driver::DatabaseDriver;
 use crate::error::AppError;
+use crate::infrastructure::mysql::driver::MySqlDriver;
 use crate::infrastructure::postgres::driver::PostgresDriver;
-use crate::infrastructure::postgres::pool::build_pool;
 use crate::infrastructure::storage::{credential_vault, profile_store};
 
-use super::models::{ConnectionProfile, SavedConnectionProfile};
+use super::models::{ConnectionProfile, Engine, SavedConnectionProfile};
 
 /// The one place an engine is chosen — every other layer (state, commands,
 /// domain services) talks to connections only through `DatabaseDriver`.
+/// `Engine::Neon` is not a distinct wire protocol, so it builds the same
+/// `PostgresDriver` as `Engine::Postgres` (see `Engine`'s doc comment).
 pub async fn open_pool_and_verify(
     profile: &ConnectionProfile,
 ) -> Result<(Arc<dyn DatabaseDriver>, String), AppError> {
     let build_start = Instant::now();
-    let pool = build_pool(profile)?;
-    log::info!("db_connect: build_pool took {:?}", build_start.elapsed());
 
-    let driver: Arc<dyn DatabaseDriver> = Arc::new(PostgresDriver::new(pool));
+    let driver: Arc<dyn DatabaseDriver> = match profile.engine {
+        Engine::Postgres | Engine::Neon => {
+            let pool = crate::infrastructure::postgres::pool::build_pool(profile)?;
+            Arc::new(PostgresDriver::new(pool))
+        }
+        Engine::MySql => {
+            let pool = crate::infrastructure::mysql::pool::build_pool(profile).await?;
+            Arc::new(MySqlDriver::new(pool, profile.database.clone()))
+        }
+    };
+    log::info!("db_connect: build_pool took {:?}", build_start.elapsed());
 
     let verify_start = Instant::now();
     let server_version = driver.server_version().await?;

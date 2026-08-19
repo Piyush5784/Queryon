@@ -2,17 +2,21 @@
 
 A modern desktop PostgreSQL client. Tauri + React + TypeScript frontend, Rust native layer for database connections and credential handling.
 
-See [`Docs/Step-1.md`](Docs/Step-1.md) for the product spec and [`CLAUDE.md`](CLAUDE.md) for architecture and development conventions.
+See `Docs/Step-1.md` for the product spec, `Docs/Phase-2-Database-Support.md` for the multi-engine roadmap, and `CLAUDE.md` for architecture and development conventions.
 
 ## Development
 
-Start a local Postgres instance:
+Start local dev databases (Postgres, a Postgres "samples" instance for large test datasets, and MySQL):
 
 ```bash
 docker compose up -d
 ```
 
-Connection URL: `postgres://devuser:devpass@localhost:55433/devdb`
+Connection URLs:
+
+- Postgres (app dev/test fixtures): `postgres://devuser:devpass@localhost:55434/devdb`
+- Postgres (large sample datasets): `postgres://devuser:devpass@localhost:55435/samples`
+- MySQL: `mysql://devuser:devpass@localhost:33066/devdb`
 
 Run the app:
 

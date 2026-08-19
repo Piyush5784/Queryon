@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/src/app/components/ui/dialog";
 import { Input } from "@/src/app/components/ui/input";
+import { ExportButton } from "@/src/components/ExportButton";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -139,6 +140,19 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
           )}
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      <div className="flex shrink-0 items-center justify-end border-t px-3 py-1.5">
+        {result?.kind === "rows" && (
+          <ExportButton
+            target={{
+              kind: "rows",
+              columns: result.columns,
+              rows: result.rows.map((row) => row.map((cell) => JSON.stringify(cell))),
+            }}
+            fileBaseName="query_result"
+          />
+        )}
+      </div>
 
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
         <DialogContent className="sm:max-w-sm">

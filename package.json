@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "check": "cd src-tauri && cargo check",
+    "test": "cd src-tauri && cargo test"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
