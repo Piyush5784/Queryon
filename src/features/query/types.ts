@@ -4,6 +4,7 @@ export interface QueryTab {
   connectionId: string;
   connectionName: string;
   title: string;
+  initialSql?: string;
 }
 
 let queryTabCounter = 0;

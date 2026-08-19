@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CheckCircle2, Link2, Loader2, XCircle } from "lucide-react";
 
 import { Button } from "@/src/app/components/ui/button";
+import { Checkbox } from "@/src/app/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/app/components/ui/select";
-import { connect, testConnection } from "@/src/features/connections/api";
+import { connect, saveConnection, testConnection } from "@/src/features/connections/api";
 import {
   createEmptyConnectionDraft,
   parsePostgresUrl,
@@ -68,6 +69,7 @@ export function ConnectionDialog({
     ...parsePostgresUrl(DEV_DB_URL),
   }));
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [saveForNextTime, setSaveForNextTime] = useState(true);
 
   function update<K extends keyof typeof draft>(
     key: K,
@@ -124,6 +126,9 @@ export function ConnectionDialog({
     const profile = buildProfile();
     try {
       await connect(profile);
+      if (saveForNextTime) {
+        await saveConnection(profile);
+      }
       onConnected(profile);
       handleOpenChange(false);
     } catch (err) {
@@ -272,6 +277,16 @@ export function ConnectionDialog({
                 </SelectContent>
               </Select>
             </FieldContent>
+          </Field>
+          <Field orientation="horizontal">
+            <Checkbox
+              id="conn-save"
+              checked={saveForNextTime}
+              onCheckedChange={(checked) => setSaveForNextTime(checked === true)}
+            />
+            <FieldLabel htmlFor="conn-save" className="font-normal">
+              Save this connection for next time
+            </FieldLabel>
           </Field>
         </FieldGroup>
 

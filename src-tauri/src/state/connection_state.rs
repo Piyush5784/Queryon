@@ -1,27 +1,27 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use deadpool_postgres::Pool;
+use crate::domain::driver::DatabaseDriver;
 
 #[derive(Default)]
 pub struct ConnectionRegistry {
-    pools: Mutex<HashMap<String, Pool>>,
+    drivers: Mutex<HashMap<String, Arc<dyn DatabaseDriver>>>,
 }
 
 impl ConnectionRegistry {
-    pub fn insert(&self, id: String, pool: Pool) {
-        self.pools.lock().unwrap().insert(id, pool);
+    pub fn insert(&self, id: String, driver: Arc<dyn DatabaseDriver>) {
+        self.drivers.lock().unwrap().insert(id, driver);
     }
 
-    pub fn get(&self, id: &str) -> Option<Pool> {
-        self.pools.lock().unwrap().get(id).cloned()
+    pub fn get(&self, id: &str) -> Option<Arc<dyn DatabaseDriver>> {
+        self.drivers.lock().unwrap().get(id).cloned()
     }
 
     pub fn remove(&self, id: &str) {
-        self.pools.lock().unwrap().remove(id);
+        self.drivers.lock().unwrap().remove(id);
     }
 
     pub fn ids(&self) -> Vec<String> {
-        self.pools.lock().unwrap().keys().cloned().collect()
+        self.drivers.lock().unwrap().keys().cloned().collect()
     }
 }

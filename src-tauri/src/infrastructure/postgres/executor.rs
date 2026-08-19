@@ -3,6 +3,7 @@ use serde_json::Value as JsonValue;
 use tokio_postgres::types::{ToSql, Type as PgType};
 use tokio_postgres::Row;
 
+use crate::domain::query::{encode_cell, RawQueryResult};
 use crate::domain::table::TableRowsResult;
 use crate::error::{describe_pg_error, AppError};
 
@@ -58,24 +59,6 @@ pub async fn fetch_rows(
         row_count: row_count as u32,
         has_more,
     })
-}
-
-/// JSON-encodes a single cell value to a string. See `TableRowsResult`'s
-/// doc comment for why cells cross the IPC boundary as strings rather
-/// than structured `serde_json::Value`s.
-pub fn encode_cell(value: JsonValue) -> String {
-    serde_json::to_string(&value).unwrap_or_else(|_| "null".to_string())
-}
-
-pub enum RawQueryResult {
-    Rows {
-        columns: Vec<String>,
-        rows: Vec<Vec<JsonValue>>,
-        row_count: usize,
-    },
-    Affected {
-        row_count: u64,
-    },
 }
 
 pub async fn execute_query(client: &Client, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {

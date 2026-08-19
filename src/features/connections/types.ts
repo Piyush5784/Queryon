@@ -12,6 +12,16 @@ export interface ConnectionProfile {
   sslMode: SslMode;
 }
 
+export interface SavedConnectionProfile {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  sslMode: SslMode;
+}
+
 export const DEFAULT_PG_PORT = 5432;
 
 export function createEmptyConnectionDraft(): Omit<ConnectionProfile, "id"> {
@@ -69,8 +79,14 @@ function isSslMode(value: string | null): value is SslMode {
   );
 }
 
-export function toDisplayUrl(profile: Omit<ConnectionProfile, "id" | "name">): string {
-  const auth = profile.user ? `${profile.user}${profile.password ? ":••••••" : ""}@` : "";
+export function toDisplayUrl(profile: {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  sslMode: SslMode;
+}): string {
+  const auth = profile.user ? `${profile.user}@` : "";
   const db = profile.database ? `/${profile.database}` : "";
   const ssl = profile.sslMode && profile.sslMode !== "disable" ? `?sslmode=${profile.sslMode}` : "";
   return `postgres://${auth}${profile.host}:${profile.port}${db}${ssl}`;

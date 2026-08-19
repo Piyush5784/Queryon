@@ -32,11 +32,11 @@ pub async fn db_fetch_table_rows(
     offset: i32,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<TableRowsResult, AppError> {
-    let pool = registry
+    let driver = registry
         .get(&connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
-    service::fetch_table_rows(&pool, &schema, &table, limit as i64, offset as i64).await
+    service::fetch_table_rows(driver.as_ref(), &schema, &table, limit as i64, offset as i64).await
 }
 
 #[tauri::command]
@@ -50,7 +50,7 @@ pub async fn db_update_json_cell(
     value: String,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<(), AppError> {
-    let pool = registry
+    let driver = registry
         .get(&connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
@@ -58,7 +58,7 @@ pub async fn db_update_json_cell(
     let value: JsonValue = serde_json::from_str(&value)
         .map_err(|e| AppError::new(format!("Invalid JSON value: {e}")))?;
 
-    service::update_json_cell(&pool, &schema, &table, &row, &column, &value).await
+    service::update_json_cell(driver.as_ref(), &schema, &table, &row, &column, &value).await
 }
 
 #[tauri::command]
@@ -72,12 +72,12 @@ pub async fn db_update_cell_text(
     value: Option<String>,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<(), AppError> {
-    let pool = registry
+    let driver = registry
         .get(&connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
     let row = decode_row(row)?;
-    service::update_cell_text(&pool, &schema, &table, &row, &column, value.as_deref()).await
+    service::update_cell_text(driver.as_ref(), &schema, &table, &row, &column, value.as_deref()).await
 }
 
 #[tauri::command]
@@ -89,11 +89,11 @@ pub async fn db_delete_rows(
     rows: Vec<HashMap<String, String>>,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<u32, AppError> {
-    let pool = registry
+    let driver = registry
         .get(&connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
     let rows = rows.into_iter().map(decode_row).collect::<Result<Vec<_>, _>>()?;
-    let affected = service::delete_rows(&pool, &schema, &table, &rows).await?;
+    let affected = service::delete_rows(driver.as_ref(), &schema, &table, &rows).await?;
     Ok(affected as u32)
 }

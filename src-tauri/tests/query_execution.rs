@@ -1,5 +1,6 @@
 use queryon_lib::domain::connection::{ConnectionProfile, SslMode};
 use queryon_lib::domain::query::{service as query_service, QueryResult};
+use queryon_lib::infrastructure::postgres::driver::PostgresDriver;
 use queryon_lib::infrastructure::postgres::pool::build_pool;
 
 fn dev_profile() -> ConnectionProfile {
@@ -15,8 +16,8 @@ fn dev_profile() -> ConnectionProfile {
     }
 }
 
-async fn dev_pool() -> deadpool_postgres::Pool {
-    build_pool(&dev_profile()).expect("failed to build pool")
+async fn dev_driver() -> PostgresDriver {
+    PostgresDriver::new(build_pool(&dev_profile()).expect("failed to build pool"))
 }
 
 /// Row cells cross the service boundary as JSON-encoded strings (see
@@ -27,8 +28,8 @@ fn cell_json(cell: &str) -> serde_json::Value {
 
 #[tokio::test]
 async fn select_returns_rows_with_columns_and_duration() {
-    let pool = dev_pool().await;
-    let result = query_service::execute_query(&pool, "select id, email from users order by id limit 2")
+    let driver = dev_driver().await;
+    let result = query_service::execute_query(&driver, "select id, email from users order by id limit 2")
         .await
         .expect("select failed");
 
@@ -45,8 +46,8 @@ async fn select_returns_rows_with_columns_and_duration() {
 
 #[tokio::test]
 async fn select_with_no_matching_rows_returns_empty_rows_not_an_error() {
-    let pool = dev_pool().await;
-    let result = query_service::execute_query(&pool, "select * from users where id = -1")
+    let driver = dev_driver().await;
+    let result = query_service::execute_query(&driver, "select * from users where id = -1")
         .await
         .expect("select failed");
 
@@ -58,9 +59,9 @@ async fn select_with_no_matching_rows_returns_empty_rows_not_an_error() {
 
 #[tokio::test]
 async fn insert_returns_affected_row_count() {
-    let pool = dev_pool().await;
+    let driver = dev_driver().await;
     let result = query_service::execute_query(
-        &pool,
+        &driver,
         "insert into categories (name) values ('__test_query_insert__')",
     )
     .await
@@ -72,21 +73,21 @@ async fn insert_returns_affected_row_count() {
     }
 
     // cleanup
-    query_service::execute_query(&pool, "delete from categories where name = '__test_query_insert__'")
+    query_service::execute_query(&driver, "delete from categories where name = '__test_query_insert__'")
         .await
         .expect("cleanup delete failed");
 }
 
 #[tokio::test]
 async fn update_returns_affected_row_count() {
-    let pool = dev_pool().await;
+    let driver = dev_driver().await;
 
-    query_service::execute_query(&pool, "insert into categories (name) values ('__test_query_update__')")
+    query_service::execute_query(&driver, "insert into categories (name) values ('__test_query_update__')")
         .await
         .expect("setup insert failed");
 
     let result = query_service::execute_query(
-        &pool,
+        &driver,
         "update categories set name = '__test_query_update_2__' where name = '__test_query_update__'",
     )
     .await
@@ -97,21 +98,21 @@ async fn update_returns_affected_row_count() {
         QueryResult::Rows { .. } => panic!("expected an Affected result for an UPDATE"),
     }
 
-    query_service::execute_query(&pool, "delete from categories where name = '__test_query_update_2__'")
+    query_service::execute_query(&driver, "delete from categories where name = '__test_query_update_2__'")
         .await
         .expect("cleanup delete failed");
 }
 
 #[tokio::test]
 async fn delete_returns_affected_row_count() {
-    let pool = dev_pool().await;
+    let driver = dev_driver().await;
 
-    query_service::execute_query(&pool, "insert into categories (name) values ('__test_query_delete__')")
+    query_service::execute_query(&driver, "insert into categories (name) values ('__test_query_delete__')")
         .await
         .expect("setup insert failed");
 
     let result = query_service::execute_query(
-        &pool,
+        &driver,
         "delete from categories where name = '__test_query_delete__'",
     )
     .await
@@ -125,8 +126,8 @@ async fn delete_returns_affected_row_count() {
 
 #[tokio::test]
 async fn syntax_error_produces_a_readable_message() {
-    let pool = dev_pool().await;
-    let result = query_service::execute_query(&pool, "select * frooom users").await;
+    let driver = dev_driver().await;
+    let result = query_service::execute_query(&driver, "select * frooom users").await;
 
     let err = result.expect_err("malformed SQL should fail").to_string();
     assert!(!err.is_empty());
@@ -135,8 +136,8 @@ async fn syntax_error_produces_a_readable_message() {
 
 #[tokio::test]
 async fn referencing_unknown_table_produces_a_readable_message() {
-    let pool = dev_pool().await;
-    let result = query_service::execute_query(&pool, "select * from table_that_does_not_exist").await;
+    let driver = dev_driver().await;
+    let result = query_service::execute_query(&driver, "select * from table_that_does_not_exist").await;
 
     let err = result.expect_err("querying a nonexistent table should fail").to_string();
     assert!(!err.is_empty());
@@ -145,15 +146,15 @@ async fn referencing_unknown_table_produces_a_readable_message() {
 
 #[tokio::test]
 async fn empty_query_is_rejected_before_hitting_the_database() {
-    let pool = dev_pool().await;
-    let result = query_service::execute_query(&pool, "   ").await;
+    let driver = dev_driver().await;
+    let result = query_service::execute_query(&driver, "   ").await;
     assert!(result.is_err(), "an empty/whitespace-only query should be rejected");
 }
 
 #[tokio::test]
 async fn json_column_round_trips_through_query_results() {
-    let pool = dev_pool().await;
-    let result = query_service::execute_query(&pool, "select metadata from users where id = 1")
+    let driver = dev_driver().await;
+    let result = query_service::execute_query(&driver, "select metadata from users where id = 1")
         .await
         .expect("select failed");
 

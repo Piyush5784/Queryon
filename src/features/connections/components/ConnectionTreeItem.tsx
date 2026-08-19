@@ -8,13 +8,15 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/src/app/components/ui/sidebar";
-import type { ConnectionProfile } from "@/src/features/connections/types";
+import type { SavedConnectionProfile } from "@/src/features/connections/types";
 import { listTables, type TableRef } from "@/src/features/tables/api";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 
 interface ConnectionTreeItemProps {
-  connection: ConnectionProfile;
+  connection: SavedConnectionProfile;
   isActive: boolean;
+  isConnected: boolean;
+  isConnecting: boolean;
   onSelect: () => void;
   onOpenTable: (schema: string, table: string) => void;
 }
@@ -22,6 +24,8 @@ interface ConnectionTreeItemProps {
 export function ConnectionTreeItem({
   connection,
   isActive,
+  isConnected,
+  isConnecting,
   onSelect,
   onOpenTable,
 }: ConnectionTreeItemProps) {
@@ -35,7 +39,7 @@ export function ConnectionTreeItem({
   }, [isActive]);
 
   useEffect(() => {
-    if (!expanded || tables !== null) return;
+    if (!expanded || !isConnected || tables !== null) return;
 
     let cancelled = false;
     setLoading(true);
@@ -55,7 +59,7 @@ export function ConnectionTreeItem({
     return () => {
       cancelled = true;
     };
-  }, [expanded, tables, connection.id]);
+  }, [expanded, isConnected, tables, connection.id]);
 
   const schemas = groupBySchema(tables ?? []);
 
@@ -72,12 +76,24 @@ export function ConnectionTreeItem({
         <ChevronRight
           className={`size-3.5 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
         />
-        <Plug className="size-4" />
-        <span>{connection.name}</span>
+        {isConnecting ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <Plug className={`size-4 ${isConnected ? "" : "text-muted-foreground"}`} />
+        )}
+        <span className={isConnected ? "" : "text-muted-foreground"}>{connection.name}</span>
       </SidebarMenuButton>
 
       {expanded && (
         <SidebarMenuSub>
+          {!isConnected && !isConnecting && (
+            <SidebarMenuSubItem>
+              <p className="px-2 py-1 text-xs text-muted-foreground">
+                Not connected — click to connect
+              </p>
+            </SidebarMenuSubItem>
+          )}
+
           {loading && (
             <SidebarMenuSubItem>
               <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
@@ -93,7 +109,7 @@ export function ConnectionTreeItem({
             </SidebarMenuSubItem>
           )}
 
-          {!loading && !error && tables?.length === 0 && (
+          {!loading && !error && isConnected && tables?.length === 0 && (
             <SidebarMenuSubItem>
               <p className="px-2 py-1 text-xs text-muted-foreground">
                 No tables found

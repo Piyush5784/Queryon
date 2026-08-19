@@ -3,12 +3,23 @@ import type {
   ColumnInfo,
   ConnectionInfo,
   ConnectionProfile,
+  QueryHistoryEntry,
+  SavedConnectionProfile,
+  SavedQuery,
   TableRef,
   TableRowsResult as RawTableRowsResult,
   QueryResult as RawQueryResult,
 } from "@/src/lib/tauri/bindings";
 
-export type { ColumnInfo, ConnectionInfo, ConnectionProfile, TableRef };
+export type {
+  ColumnInfo,
+  ConnectionInfo,
+  ConnectionProfile,
+  QueryHistoryEntry,
+  SavedConnectionProfile,
+  SavedQuery,
+  TableRef,
+};
 
 export type CellValue = string | number | boolean | null | Record<string, unknown> | unknown[];
 
@@ -71,6 +82,22 @@ export async function disconnect(connectionId: string): Promise<void> {
 
 export async function listActiveConnections(): Promise<string[]> {
   return commands.dbListActiveConnections();
+}
+
+export async function saveConnection(profile: ConnectionProfile): Promise<void> {
+  await unwrap(await commands.dbSaveConnection(profile));
+}
+
+export async function listSavedConnections(): Promise<SavedConnectionProfile[]> {
+  return unwrap(await commands.dbListSavedConnections());
+}
+
+export async function connectSaved(connectionId: string): Promise<ConnectionInfo> {
+  return unwrap(await commands.dbConnectSaved(connectionId));
+}
+
+export async function deleteSavedConnection(connectionId: string): Promise<void> {
+  await unwrap(await commands.dbDeleteSavedConnection(connectionId));
 }
 
 export async function listTables(connectionId: string): Promise<TableRef[]> {
@@ -139,4 +166,24 @@ export async function executeQuery(connectionId: string, sql: string): Promise<Q
     return raw;
   }
   return { ...raw, rows: decodeRows(raw.rows) };
+}
+
+export async function saveQuery(query: SavedQuery): Promise<void> {
+  await unwrap(await commands.dbSaveQuery(query));
+}
+
+export async function listSavedQueries(connectionId: string): Promise<SavedQuery[]> {
+  return unwrap(await commands.dbListSavedQueries(connectionId));
+}
+
+export async function deleteSavedQuery(queryId: string): Promise<void> {
+  await unwrap(await commands.dbDeleteSavedQuery(queryId));
+}
+
+export async function listQueryHistory(connectionId: string): Promise<QueryHistoryEntry[]> {
+  return unwrap(await commands.dbListQueryHistory(connectionId));
+}
+
+export async function clearQueryHistory(connectionId: string): Promise<void> {
+  await unwrap(await commands.dbClearQueryHistory(connectionId));
 }

@@ -9,50 +9,72 @@ import {
 } from "@/src/app/components/ui/sidebar";
 import { TooltipProvider } from "@/src/app/components/ui/tooltip";
 import type { AppTab } from "@/src/app/tabs";
-import type { ConnectionProfile } from "@/src/features/connections/types";
+import type { SavedConnectionProfile } from "@/src/features/connections/types";
+import type { SavedQuery } from "@/src/features/query/api";
 import { Sidebar } from "@/src/layouts/Sidebar";
 import { Workspace } from "@/src/layouts/Workspace";
 
 interface AppLayoutProps {
-  connections: ConnectionProfile[];
+  connections: SavedConnectionProfile[];
+  connectedIds: Set<string>;
+  connectingId: string | null;
+  connectError: string | null;
   activeConnectionId: string | null;
-  activeConnection: ConnectionProfile | null;
+  activeConnection: SavedConnectionProfile | null;
+  queryRefreshToken: number;
   onSelectConnection: (id: string) => void;
+  onDeleteConnection: (id: string) => void;
   onOpenTable: (connectionId: string, schema: string, table: string) => void;
   onNewConnection: () => void;
   onNewQuery: () => void;
+  onOpenSavedQuery: (query: SavedQuery) => void;
+  onOpenHistoryEntry: (sql: string) => void;
   showHome: boolean;
   onGoHome: () => void;
   tabs: AppTab[];
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
+  onQueryActivity: () => void;
 }
 
 export function AppLayout({
   connections,
+  connectedIds,
+  connectingId,
+  connectError,
   activeConnectionId,
   activeConnection,
+  queryRefreshToken,
   onSelectConnection,
+  onDeleteConnection,
   onOpenTable,
   onNewConnection,
   onNewQuery,
+  onOpenSavedQuery,
+  onOpenHistoryEntry,
   showHome,
   onGoHome,
   tabs,
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onQueryActivity,
 }: AppLayoutProps) {
   return (
     <TooltipProvider>
       <SidebarProvider>
         <Sidebar
           connections={connections}
+          connectedIds={connectedIds}
+          connectingId={connectingId}
           activeConnectionId={activeConnectionId}
+          queryRefreshToken={queryRefreshToken}
           onSelectConnection={onSelectConnection}
           onOpenTable={onOpenTable}
           onNewConnection={onNewConnection}
+          onOpenSavedQuery={onOpenSavedQuery}
+          onOpenHistoryEntry={onOpenHistoryEntry}
         />
         <SidebarInset>
           <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-2">
@@ -90,13 +112,18 @@ export function AppLayout({
           <Workspace
             showHome={showHome}
             connections={connections}
+            connectedIds={connectedIds}
+            connectingId={connectingId}
+            connectError={connectError}
             activeConnectionId={activeConnectionId}
             onSelectConnection={onSelectConnection}
+            onDeleteConnection={onDeleteConnection}
             tabs={tabs}
             activeTabId={activeTabId}
             onSelectTab={onSelectTab}
             onCloseTab={onCloseTab}
             onNewConnection={onNewConnection}
+            onQueryActivity={onQueryActivity}
           />
         </SidebarInset>
       </SidebarProvider>

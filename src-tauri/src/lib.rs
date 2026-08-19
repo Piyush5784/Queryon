@@ -16,6 +16,10 @@ pub fn run() {
         commands::connection::db_test_connection,
         commands::connection::db_disconnect,
         commands::connection::db_list_active_connections,
+        commands::connection::db_save_connection,
+        commands::connection::db_list_saved_connections,
+        commands::connection::db_connect_saved,
+        commands::connection::db_delete_saved_connection,
         commands::schema::db_list_tables,
         commands::schema::db_get_table_columns,
         commands::table::db_fetch_table_rows,
@@ -23,6 +27,11 @@ pub fn run() {
         commands::table::db_update_cell_text,
         commands::table::db_delete_rows,
         commands::query::db_execute_query,
+        commands::query::db_save_query,
+        commands::query::db_list_saved_queries,
+        commands::query::db_delete_saved_query,
+        commands::query::db_list_query_history,
+        commands::query::db_clear_query_history,
     ]);
 
     #[cfg(debug_assertions)]
@@ -35,6 +44,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(ConnectionRegistry::default())
         .invoke_handler(builder.invoke_handler())
         .run(tauri::generate_context!())

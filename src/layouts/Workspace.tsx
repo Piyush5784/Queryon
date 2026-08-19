@@ -8,7 +8,7 @@ import {
   EmptyTitle,
 } from "@/src/app/components/ui/empty";
 import type { AppTab } from "@/src/app/tabs";
-import type { ConnectionProfile } from "@/src/features/connections/types";
+import type { SavedConnectionProfile } from "@/src/features/connections/types";
 import { QueryTabView } from "@/src/features/query/components/QueryTabView";
 import { TabBar } from "@/src/features/tables/components/TableToolbar/TabBar";
 import { TableView } from "@/src/features/tables/components/TableView";
@@ -16,26 +16,36 @@ import { HomeScreen } from "@/src/layouts/HomeScreen";
 
 interface WorkspaceProps {
   showHome: boolean;
-  connections: ConnectionProfile[];
+  connections: SavedConnectionProfile[];
+  connectedIds: Set<string>;
+  connectingId: string | null;
+  connectError: string | null;
   activeConnectionId: string | null;
   onSelectConnection: (id: string) => void;
+  onDeleteConnection: (id: string) => void;
   tabs: AppTab[];
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onNewConnection: () => void;
+  onQueryActivity: () => void;
 }
 
 export function Workspace({
   showHome,
   connections,
+  connectedIds,
+  connectingId,
+  connectError,
   activeConnectionId,
   onSelectConnection,
+  onDeleteConnection,
   tabs,
   activeTabId,
   onSelectTab,
   onCloseTab,
   onNewConnection,
+  onQueryActivity,
 }: WorkspaceProps) {
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
@@ -43,8 +53,12 @@ export function Workspace({
     return (
       <HomeScreen
         connections={connections}
+        connectedIds={connectedIds}
+        connectingId={connectingId}
+        connectError={connectError}
         activeConnectionId={activeConnectionId}
         onSelectConnection={onSelectConnection}
+        onDeleteConnection={onDeleteConnection}
         onNewConnection={onNewConnection}
       />
     );
@@ -64,7 +78,7 @@ export function Workspace({
           activeTab.type === "table" ? (
             <TableView key={activeTab.id} tab={activeTab} />
           ) : (
-            <QueryTabView key={activeTab.id} tab={activeTab} />
+            <QueryTabView key={activeTab.id} tab={activeTab} onQueryActivity={onQueryActivity} />
           )
         ) : (
           <div className="flex h-full items-center justify-center p-6">

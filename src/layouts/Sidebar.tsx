@@ -1,4 +1,4 @@
-import { Database, History, Plus, Star } from "lucide-react";
+import { Database, Plus } from "lucide-react";
 
 import { Button } from "@/src/app/components/ui/button";
 import {
@@ -12,22 +12,35 @@ import {
   SidebarMenu,
 } from "@/src/app/components/ui/sidebar";
 import { ConnectionTreeItem } from "@/src/features/connections/components/ConnectionTreeItem";
-import type { ConnectionProfile } from "@/src/features/connections/types";
+import type { SavedConnectionProfile } from "@/src/features/connections/types";
+import { QueryHistorySection } from "@/src/features/query/components/QueryHistorySection";
+import { SavedQueriesSection } from "@/src/features/query/components/SavedQueriesSection";
+import type { SavedQuery } from "@/src/features/query/api";
 
 interface SidebarProps {
-  connections: ConnectionProfile[];
+  connections: SavedConnectionProfile[];
+  connectedIds: Set<string>;
+  connectingId: string | null;
   activeConnectionId: string | null;
+  queryRefreshToken: number;
   onSelectConnection: (id: string) => void;
   onOpenTable: (connectionId: string, schema: string, table: string) => void;
   onNewConnection: () => void;
+  onOpenSavedQuery: (query: SavedQuery) => void;
+  onOpenHistoryEntry: (sql: string) => void;
 }
 
 export function Sidebar({
   connections,
+  connectedIds,
+  connectingId,
   activeConnectionId,
+  queryRefreshToken,
   onSelectConnection,
   onOpenTable,
   onNewConnection,
+  onOpenSavedQuery,
+  onOpenHistoryEntry,
 }: SidebarProps) {
   return (
     <SidebarPrimitive collapsible="icon">
@@ -66,6 +79,8 @@ export function Sidebar({
                     key={conn.id}
                     connection={conn}
                     isActive={conn.id === activeConnectionId}
+                    isConnected={connectedIds.has(conn.id)}
+                    isConnecting={connectingId === conn.id}
                     onSelect={() => onSelectConnection(conn.id)}
                     onOpenTable={(schema, table) =>
                       onOpenTable(conn.id, schema, table)
@@ -77,29 +92,17 @@ export function Sidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>
-            <Star className="size-3.5" />
-            Saved Queries
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <p className="px-2 py-1.5 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-              No saved queries
-            </p>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <SavedQueriesSection
+          connectionId={activeConnectionId}
+          refreshToken={queryRefreshToken}
+          onOpenQuery={onOpenSavedQuery}
+        />
 
-        <SidebarGroup>
-          <SidebarGroupLabel>
-            <History className="size-3.5" />
-            Query History
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <p className="px-2 py-1.5 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-              No queries run yet
-            </p>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <QueryHistorySection
+          connectionId={activeConnectionId}
+          refreshToken={queryRefreshToken}
+          onOpenQuery={onOpenHistoryEntry}
+        />
       </SidebarContent>
     </SidebarPrimitive>
   );

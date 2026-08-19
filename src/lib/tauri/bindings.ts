@@ -8,6 +8,10 @@ export const commands = {
 	dbTestConnection: (profile: ConnectionProfile) => typedError<ConnectionInfo, AppError>(__TAURI_INVOKE("db_test_connection", { profile })),
 	dbDisconnect: (connectionId: string) => __TAURI_INVOKE<void>("db_disconnect", { connectionId }),
 	dbListActiveConnections: () => __TAURI_INVOKE<string[]>("db_list_active_connections"),
+	dbSaveConnection: (profile: ConnectionProfile) => typedError<null, AppError>(__TAURI_INVOKE("db_save_connection", { profile })),
+	dbListSavedConnections: () => typedError<SavedConnectionProfile[], AppError>(__TAURI_INVOKE("db_list_saved_connections")),
+	dbConnectSaved: (connectionId: string) => typedError<ConnectionInfo, AppError>(__TAURI_INVOKE("db_connect_saved", { connectionId })),
+	dbDeleteSavedConnection: (connectionId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_delete_saved_connection", { connectionId })),
 	dbListTables: (connectionId: string) => typedError<TableRef[], AppError>(__TAURI_INVOKE("db_list_tables", { connectionId })),
 	dbGetTableColumns: (connectionId: string, schema: string, table: string) => typedError<ColumnInfo[], AppError>(__TAURI_INVOKE("db_get_table_columns", { connectionId, schema, table })),
 	dbFetchTableRows: (connectionId: string, schema: string, table: string, limit: number, offset: number) => typedError<TableRowsResult, AppError>(__TAURI_INVOKE("db_fetch_table_rows", { connectionId, schema, table, limit, offset })),
@@ -15,6 +19,11 @@ export const commands = {
 	dbUpdateCellText: (connectionId: string, schema: string, table: string, row: { [key in string]: string }, column: string, value: string | null) => typedError<null, AppError>(__TAURI_INVOKE("db_update_cell_text", { connectionId, schema, table, row, column, value })),
 	dbDeleteRows: (connectionId: string, schema: string, table: string, rows: { [key in string]: string }[]) => typedError<number, AppError>(__TAURI_INVOKE("db_delete_rows", { connectionId, schema, table, rows })),
 	dbExecuteQuery: (connectionId: string, sql: string) => typedError<QueryResult, AppError>(__TAURI_INVOKE("db_execute_query", { connectionId, sql })),
+	dbSaveQuery: (query: SavedQuery) => typedError<null, AppError>(__TAURI_INVOKE("db_save_query", { query })),
+	dbListSavedQueries: (connectionId: string) => typedError<SavedQuery[], AppError>(__TAURI_INVOKE("db_list_saved_queries", { connectionId })),
+	dbDeleteSavedQuery: (queryId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_delete_saved_query", { queryId })),
+	dbListQueryHistory: (connectionId: string) => typedError<QueryHistoryEntry[], AppError>(__TAURI_INVOKE("db_list_query_history", { connectionId })),
+	dbClearQueryHistory: (connectionId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_clear_query_history", { connectionId })),
 };
 
 /* Types */
@@ -45,12 +54,44 @@ export type ConnectionProfile = {
 	sslMode: SslMode,
 };
 
+export type QueryHistoryEntry = {
+	id: string,
+	connectionId: string,
+	sql: string,
+	status: QueryHistoryStatus,
+	errorMessage: string | null,
+	rowCount: number | null,
+	durationMs: number,
+	ranAt: string,
+};
+
+export type QueryHistoryStatus = "success" | "error";
+
 /**
  *  See `TableRowsResult`'s doc comment: each cell is a JSON-encoded
  *  string, not a structured value, working around specta's inability
  *  to export `serde_json::Value` without infinite recursion.
  */
 export type QueryResult = { kind: "rows"; columns: string[]; rows: string[][]; rowCount: number; truncated: boolean; durationMs: number } | { kind: "affected"; rowCount: number; durationMs: number };
+
+export type SavedConnectionProfile = {
+	id: string,
+	name: string,
+	host: string,
+	port: number,
+	database: string,
+	user: string,
+	sslMode: SslMode,
+};
+
+export type SavedQuery = {
+	id: string,
+	connectionId: string,
+	title: string,
+	sql: string,
+	createdAt: string,
+	updatedAt: string,
+};
 
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
