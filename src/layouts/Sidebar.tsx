@@ -1,9 +1,10 @@
-import { Database, Plus } from "lucide-react";
+import { Database, Moon, Plus, Sun } from "lucide-react";
 
 import { Button } from "@/src/app/components/ui/button";
 import {
   Sidebar as SidebarPrimitive,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupContent,
@@ -11,6 +12,7 @@ import {
   SidebarHeader,
   SidebarMenu,
 } from "@/src/app/components/ui/sidebar";
+import { useTheme } from "@/src/app/components/theme-provider";
 import { ConnectionTreeItem } from "@/src/features/connections/components/ConnectionTreeItem";
 import type { SavedConnectionProfile } from "@/src/features/connections/types";
 import type { SavedQuery } from "@/src/features/query/api";
@@ -40,6 +42,8 @@ export function Sidebar({
   onOpenSavedQuery,
   onOpenHistoryEntry,
 }: SidebarProps) {
+  const { theme, setTheme } = useTheme();
+
   return (
     <SidebarPrimitive collapsible="icon">
       <SidebarHeader className="gap-2 px-2 py-2">
@@ -93,6 +97,29 @@ export function Sidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      <SidebarFooter className="px-2 py-2">
+        <div className="flex items-center gap-1 rounded-lg border p-0.5 group-data-[collapsible=icon]:flex-col">
+          <Button
+            variant={theme === "light" ? "secondary" : "ghost"}
+            size="sm"
+            className="flex-1 justify-center gap-1.5"
+            onClick={() => setTheme("light")}
+          >
+            <Sun className="size-3.5" />
+            <span className="group-data-[collapsible=icon]:hidden">Light</span>
+          </Button>
+          <Button
+            variant={theme === "dark" ? "secondary" : "ghost"}
+            size="sm"
+            className="flex-1 justify-center gap-1.5"
+            onClick={() => setTheme("dark")}
+          >
+            <Moon className="size-3.5" />
+            <span className="group-data-[collapsible=icon]:hidden">Dark</span>
+          </Button>
+        </div>
+      </SidebarFooter>
     </SidebarPrimitive>
   );
 }

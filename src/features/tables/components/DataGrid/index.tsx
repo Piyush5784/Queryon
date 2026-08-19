@@ -1,19 +1,28 @@
-import { useRef, useState } from "react";
-import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { Braces } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DataEditor, {
+  CompactSelection,
+  getDefaultTheme,
+  GridCellKind,
+  type CellClickedEventArgs,
+  type EditableGridCell,
+  type GridCell,
+  type GridColumn,
+  type GridSelection,
+  type Item,
+  type Theme,
+} from "@glideapps/glide-data-grid";
 
-import { Checkbox } from "@/src/app/components/ui/checkbox";
 import type { CellValue } from "@/src/features/tables/api";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
+import { RowContextMenu } from "@/src/features/tables/components/DataGrid/RowContextMenu";
 
 export type JsonCellMode = "view" | "edit";
 
-export interface PendingEdit {
+/** Pending, unsaved edits for a single row, keyed by column name. */
+export interface RowEdit {
   rowIndex: number;
-  columnName: string;
-  newValue: string | null;
   row: CellValue[];
+  values: Record<string, string | null>;
 }
 
 interface DataGridProps {
@@ -26,16 +35,23 @@ interface DataGridProps {
     mode: JsonCellMode
   ) => void;
   editable?: boolean;
-  pendingEdit: PendingEdit | null;
-  onPendingEditChange: (edit: PendingEdit | null) => void;
+  /** Row currently unlocked for whole-row inline editing (via "Edit Row"). */
+  editingRowIndex?: number | null;
+  pendingEdit: RowEdit | null;
+  onPendingEditChange: (edit: RowEdit | null) => void;
   saving?: boolean;
   selectable?: boolean;
   selectedRowIndices?: Set<number>;
   onSelectionChange?: (indices: Set<number>) => void;
+  onDeleteRow?: (rowIndex: number) => void;
 }
 
 const ROW_HEIGHT = 32;
-const SELECT_COLUMN_ID = "__select__";
+const DEFAULT_COLUMN_WIDTH = 180;
+const MIN_COLUMN_WIDTH = 80;
+const MAX_COLUMN_WIDTH = 400;
+const MENU_COLUMN_ID = "__row_menu__";
+const MENU_COLUMN_WIDTH = 36;
 
 function cellValueEquals(original: CellValue, newValue: string | null): boolean {
   if (newValue === null) return original === null || original === undefined;
@@ -43,278 +59,359 @@ function cellValueEquals(original: CellValue, newValue: string | null): boolean 
   return String(original) === newValue;
 }
 
+function cellDisplayString(value: CellValue): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value);
+}
+
+function estimateColumnWidth(columnName: string, sampleRows: CellValue[][], columnIndex: number): number {
+  let maxLength = columnName.length;
+  const sampleSize = Math.min(sampleRows.length, 30);
+  for (let i = 0; i < sampleSize; i++) {
+    const text = cellDisplayString(sampleRows[i]?.[columnIndex]);
+    if (text.length > maxLength) maxLength = text.length;
+  }
+  const estimated = 16 + maxLength * 7;
+  return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, estimated || DEFAULT_COLUMN_WIDTH));
+}
+
+const queryonLightTheme: Partial<Theme> = {
+  accentColor: "#171717",
+  accentFg: "#FAFAFA",
+  accentLight: "rgba(23, 23, 23, 0.1)",
+  textDark: "#0A0A0A",
+  textMedium: "#737373",
+  textLight: "#737373",
+  textBubble: "#0A0A0A",
+  bgIconHeader: "#737373",
+  fgIconHeader: "#FFFFFF",
+  textHeader: "#737373",
+  textHeaderSelected: "#FFFFFF",
+  bgCell: "#FFFFFF",
+  bgCellMedium: "#F5F5F5",
+  bgHeader: "#FFFFFF",
+  bgHeaderHasFocus: "#F5F5F5",
+  bgHeaderHovered: "#F5F5F5",
+  bgBubble: "#F5F5F5",
+  bgBubbleSelected: "#FFFFFF",
+  bgSearchResult: "#fff3c4",
+  borderColor: "#E5E5E5",
+  drilldownBorder: "#E5E5E5",
+  linkColor: "#171717",
+};
+
+const queryonDarkTheme: Partial<Theme> = {
+  accentColor: "#E5E5E5",
+  accentFg: "#171717",
+  accentLight: "rgba(229, 229, 229, 0.15)",
+  textDark: "#FAFAFA",
+  textMedium: "#A1A1A1",
+  textLight: "#A1A1A1",
+  textBubble: "#FAFAFA",
+  bgIconHeader: "#A1A1A1",
+  fgIconHeader: "#0A0A0A",
+  textHeader: "#A1A1A1",
+  textHeaderSelected: "#0A0A0A",
+  bgCell: "#0A0A0A",
+  bgCellMedium: "#171717",
+  bgHeader: "#0A0A0A",
+  bgHeaderHasFocus: "#262626",
+  bgHeaderHovered: "#262626",
+  bgBubble: "#262626",
+  bgBubbleSelected: "#171717",
+  bgSearchResult: "#423c24",
+  borderColor: "rgba(255, 255, 255, 0.1)",
+  drilldownBorder: "rgba(255, 255, 255, 0.2)",
+  linkColor: "#E5E5E5",
+};
+
+function usePrefersDark(): boolean {
+  const [isDark, setIsDark] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+  );
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => setIsDark(root.classList.contains("dark")));
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return isDark;
+}
+
+function useGlideTheme(): Partial<Theme> {
+  const isDark = usePrefersDark();
+  return useMemo(
+    () => ({ ...getDefaultTheme(), ...(isDark ? queryonDarkTheme : queryonLightTheme) }),
+    [isDark]
+  );
+}
+
 export function DataGrid({
   columns,
   rows,
   onOpenJsonCell,
   editable,
+  editingRowIndex = null,
   pendingEdit,
   onPendingEditChange,
   saving,
   selectable,
   selectedRowIndices,
   onSelectionChange,
+  onDeleteRow,
 }: DataGridProps) {
-  const parentRef = useRef<HTMLDivElement>(null);
-  const [editingCell, setEditingCell] = useState<{ rowIndex: number; columnName: string } | null>(
-    null
-  );
+  const theme = useGlideTheme();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [columnWidths, setColumnWidths] = useState<Map<string, number>>(new Map());
+  const [contextMenu, setContextMenu] = useState<{ rowIndex: number; x: number; y: number } | null>(null);
 
-  function toggleRow(rowIndex: number, checked: boolean) {
-    if (!onSelectionChange) return;
-    const next = new Set(selectedRowIndices ?? []);
-    if (checked) next.add(rowIndex);
-    else next.delete(rowIndex);
-    onSelectionChange(next);
+  const gridColumns: GridColumn[] = useMemo(() => {
+    const menuColumn: GridColumn = {
+      id: MENU_COLUMN_ID,
+      title: "",
+      width: MENU_COLUMN_WIDTH,
+      hasMenu: false,
+      themeOverride: { bgCell: theme.bgHeader },
+    };
+    const dataColumns = columns.map((name, index) => ({
+      id: name,
+      title: name,
+      width: columnWidths.get(name) ?? estimateColumnWidth(name, rows.slice(0, 30), index),
+      hasMenu: false,
+    }));
+    return [menuColumn, ...dataColumns];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns, columnWidths, theme.bgHeader]);
+
+  function rowValue(rowIndex: number, columnIndex: number): CellValue {
+    const columnName = columns[columnIndex];
+    if (pendingEdit !== null && pendingEdit.rowIndex === rowIndex && columnName in pendingEdit.values) {
+      return pendingEdit.values[columnName];
+    }
+    return rows[rowIndex]?.[columnIndex];
   }
 
-  function toggleAll(checked: boolean) {
-    if (!onSelectionChange) return;
-    onSelectionChange(checked ? new Set(rows.map((_, i) => i)) : new Set());
-  }
-
-  const columnDefs: ColumnDef<CellValue[]>[] = columns.map((name, colIndex) => ({
-    id: name,
-    header: name,
-    accessorFn: (row) => row[colIndex],
-    cell: (info) => {
-      const isEditing =
-        editingCell !== null &&
-        editingCell.rowIndex === info.row.index &&
-        editingCell.columnName === name;
-
-      const isPending =
-        pendingEdit !== null &&
-        pendingEdit.rowIndex === info.row.index &&
-        pendingEdit.columnName === name;
-
-      if (isEditing) {
-        const originalValue = info.getValue<CellValue>();
-        const startingValue = isPending ? pendingEdit.newValue : originalValue;
-        return (
-          <InlineCellEditor
-            value={startingValue}
-            disabled={!!saving}
-            onCommit={(newValue) => {
-              setEditingCell(null);
-              if (cellValueEquals(originalValue, newValue)) {
-                if (isPending) onPendingEditChange(null);
-                return;
-              }
-              onPendingEditChange({
-                rowIndex: info.row.index,
-                columnName: name,
-                newValue,
-                row: info.row.original,
-              });
-            }}
-            onCancel={() => setEditingCell(null)}
-          />
-        );
+  const getCellContent = useCallback(
+    ([gridCol, row]: Item): GridCell => {
+      if (gridCol === 0) {
+        return {
+          kind: GridCellKind.Text,
+          data: "",
+          displayData: "⋮⋮",
+          allowOverlay: false,
+          readonly: true,
+          themeOverride: { textDark: theme.textLight, baseFontStyle: "12px" },
+        };
       }
 
-      return (
-        <CellRenderer
-          value={isPending ? pendingEdit.newValue : info.getValue<CellValue>()}
-          columnName={name}
-          row={info.row.original}
-          onOpenJsonCell={onOpenJsonCell}
-          isPending={isPending}
-          onStartEdit={
-            editable && !saving && (pendingEdit === null || isPending)
-              ? () => setEditingCell({ rowIndex: info.row.index, columnName: name })
+      const col = gridCol - 1;
+      const value = rowValue(row, col);
+      const columnName = columns[col];
+      const isJson = value !== null && value !== undefined && typeof value === "object";
+      const isRowEditing =
+        editingRowIndex === row || (pendingEdit !== null && pendingEdit.rowIndex === row);
+      const isFieldPending =
+        pendingEdit !== null && pendingEdit.rowIndex === row && columnName in pendingEdit.values;
+
+      if (isJson) {
+        return {
+          kind: GridCellKind.Text,
+          data: JSON.stringify(value),
+          displayData: JSON.stringify(value),
+          allowOverlay: false,
+          readonly: true,
+          themeOverride: { textDark: theme.linkColor, baseFontStyle: "12px monospace" },
+        };
+      }
+
+      const isBoolean = typeof value === "boolean";
+      const isNull = value === null || value === undefined;
+      const display = isNull ? "" : isBoolean ? (value ? "true" : "false") : String(value);
+      const activeRow = editingRowIndex ?? pendingEdit?.rowIndex ?? null;
+      const canEditCell = !!editable && !saving && (activeRow === null || activeRow === row);
+
+      return {
+        kind: GridCellKind.Text,
+        data: display,
+        displayData: isNull ? "NULL" : display,
+        allowOverlay: canEditCell,
+        readonly: !canEditCell,
+        themeOverride: isNull
+          ? { textDark: theme.textLight, baseFontStyle: "italic 12px" }
+          : isBoolean
+            ? { textDark: value ? "#10b981" : theme.textLight }
+            : isFieldPending
+              ? { bgCell: "rgba(245, 158, 11, 0.15)", textDark: "#f59e0b" }
+              : isRowEditing
+                ? { bgCell: theme.bgCellMedium }
+                : undefined,
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [rows, columns, pendingEdit, editingRowIndex, editable, saving, theme]
+  );
+
+  function handleCellEdited([gridCol, row]: Item, newCell: EditableGridCell) {
+    if (gridCol === 0 || newCell.kind !== GridCellKind.Text) return;
+
+    const col = gridCol - 1;
+    const columnName = columns[col];
+    const originalValue = rows[row]?.[col];
+    const newValue = newCell.data === "" ? null : newCell.data;
+
+    const hasPendingForRow = pendingEdit !== null && pendingEdit.rowIndex === row;
+    const baseValues = hasPendingForRow ? pendingEdit.values : {};
+
+    if (cellValueEquals(originalValue, newValue)) {
+      if (!hasPendingForRow) return;
+      const { [columnName]: _removed, ...rest } = baseValues;
+      onPendingEditChange(
+        Object.keys(rest).length === 0 && editingRowIndex !== row
+          ? null
+          : { rowIndex: row, row: rows[row], values: rest }
+      );
+      return;
+    }
+
+    onPendingEditChange({
+      rowIndex: row,
+      row: rows[row],
+      values: { ...baseValues, [columnName]: newValue },
+    });
+  }
+
+  const lastClick = useRef<{ col: number; row: number; time: number } | null>(null);
+  const DOUBLE_CLICK_MS = 400;
+
+  function handleCellClicked([gridCol, row]: Item, event: CellClickedEventArgs) {
+    if (gridCol === 0) {
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (!containerRect) return;
+      setContextMenu({
+        rowIndex: row,
+        x: event.bounds.x + 20,
+        y: event.bounds.y + 20,
+      });
+      return;
+    }
+
+    const col = gridCol - 1;
+    const value = rows[row]?.[col];
+    if (value === null || value === undefined || typeof value !== "object") {
+      lastClick.current = null;
+      return; 
+    }
+
+    const now = Date.now();
+    const isDoubleClick =
+      lastClick.current !== null &&
+      lastClick.current.col === col &&
+      lastClick.current.row === row &&
+      now - lastClick.current.time < DOUBLE_CLICK_MS;
+
+    lastClick.current = isDoubleClick ? null : { col, row, time: now };
+    onOpenJsonCell?.(columns[col], value as JsonValue, rows[row], isDoubleClick ? "edit" : "view");
+  }
+
+  function handleCellContextMenu([, row]: Item, event: CellClickedEventArgs) {
+    event.preventDefault();
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+
+    setContextMenu({
+      rowIndex: row,
+      x:event.bounds.x + 20,
+      y: event.bounds.y + 20,
+    });
+  }
+
+  async function handleCopyRowAsJson(rowIndex: number) {
+    const obj: Record<string, CellValue> = {};
+    columns.forEach((col, i) => {
+      obj[col] = rows[rowIndex]?.[i] ?? null;
+    });
+    await navigator.clipboard.writeText(JSON.stringify(obj, null, 2));
+  }
+
+  function handleColumnResize(column: GridColumn, newSize: number) {
+    if (!column.id || column.id === MENU_COLUMN_ID) return;
+    setColumnWidths((prev) => {
+      const next = new Map(prev);
+      next.set(column.id as string, newSize);
+      return next;
+    });
+  }
+
+  const [cellSelection, setCellSelection] = useState<GridSelection["current"]>(undefined);
+
+  const gridSelection: GridSelection = useMemo(() => {
+    let rowsSelection = CompactSelection.empty();
+    if (selectedRowIndices) {
+      for (const index of selectedRowIndices) {
+        rowsSelection = rowsSelection.add(index);
+      }
+    }
+    return { columns: CompactSelection.empty(), rows: rowsSelection, current: cellSelection };
+  }, [selectedRowIndices, cellSelection]);
+
+  function handleGridSelectionChange(newSelection: GridSelection) {
+    setCellSelection(newSelection.current);
+    if (!onSelectionChange) return;
+    const indices = new Set<number>();
+    for (const range of newSelection.rows) {
+      indices.add(range);
+    }
+    onSelectionChange(indices);
+  }
+
+  return (
+    <div ref={containerRef} className="relative z-0 h-full">
+      <DataEditor
+        columns={gridColumns}
+        rows={rows.length}
+        getCellContent={getCellContent}
+        onCellEdited={editable ? handleCellEdited : undefined}
+        onCellClicked={handleCellClicked}
+        onCellContextMenu={handleCellContextMenu}
+        onColumnResizeEnd={handleColumnResize}
+        rowHeight={ROW_HEIGHT}
+        headerHeight={ROW_HEIGHT}
+        cellActivationBehavior="double-click"
+        theme={theme}
+        smoothScrollX
+        smoothScrollY
+        freezeColumns={1}
+        rowMarkers={selectable ? "checkbox" : "none"}
+        gridSelection={selectable ? gridSelection : undefined}
+        onGridSelectionChange={selectable ? handleGridSelectionChange : undefined}
+        getCellsForSelection
+        width="100%"
+        height="100%"
+      />
+
+      {contextMenu && (
+        <RowContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onCopyAsJson={() => {
+            handleCopyRowAsJson(contextMenu.rowIndex);
+            setContextMenu(null);
+          }}
+          onDelete={
+            onDeleteRow
+              ? () => {
+                  onDeleteRow(contextMenu.rowIndex);
+                  setContextMenu(null);
+                }
               : undefined
           }
         />
-      );
-    },
-  }));
-
-  const table = useReactTable({
-    data: rows,
-    columns: columnDefs,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
-  const { rows: tableRows } = table.getRowModel();
-
-  const virtualizer = useVirtualizer({
-    count: tableRows.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 12,
-  });
-
-  const virtualRows = virtualizer.getVirtualItems();
-  const totalHeight = virtualizer.getTotalSize();
-  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
-  const paddingBottom = virtualRows.length > 0 ? totalHeight - virtualRows[virtualRows.length - 1].end : 0;
-
-  const allSelected = selectable && rows.length > 0 && selectedRowIndices?.size === rows.length;
-  const someSelected = selectable && !!selectedRowIndices?.size && !allSelected;
-
-  return (
-    <div ref={parentRef} className="h-full overflow-auto">
-      <table className="w-full border-collapse text-sm">
-        <thead className="sticky top-0 z-10 bg-background">
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {selectable && (
-                <th
-                  key={SELECT_COLUMN_ID}
-                  className="w-8 border-b border-r border-border px-2 py-1.5"
-                >
-                  <Checkbox
-                    checked={!!allSelected}
-                    indeterminate={!!someSelected}
-                    onCheckedChange={(checked) => toggleAll(checked === true)}
-                  />
-                </th>
-              )}
-              {headerGroup.headers.map((header) => (
-                <th
-                  key={header.id}
-                  className="border-b border-r border-border px-3 py-1.5 text-left text-xs font-medium text-muted-foreground last:border-r-0"
-                >
-                  {flexRender(header.column.columnDef.header, header.getContext())}
-                </th>
-              ))}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {paddingTop > 0 && (
-            <tr>
-              <td style={{ height: paddingTop }} colSpan={columns.length + (selectable ? 1 : 0)} />
-            </tr>
-          )}
-          {virtualRows.map((virtualRow) => {
-            const row = tableRows[virtualRow.index];
-            const isSelected = selectedRowIndices?.has(row.index) ?? false;
-            return (
-              <tr
-                key={row.id}
-                className={`hover:bg-muted/40 ${isSelected ? "bg-primary/5" : ""}`}
-                style={{ height: ROW_HEIGHT }}
-              >
-                {selectable && (
-                  <td className="border-b border-r border-border px-2 py-1">
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={(checked) => toggleRow(row.index, checked === true)}
-                    />
-                  </td>
-                )}
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className="relative border-b border-r border-border px-3 py-1 text-xs last:border-r-0"
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-          {paddingBottom > 0 && (
-            <tr>
-              <td style={{ height: paddingBottom }} colSpan={columns.length + (selectable ? 1 : 0)} />
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function CellRenderer({
-  value,
-  columnName,
-  row,
-  onOpenJsonCell,
-  onStartEdit,
-  isPending,
-}: {
-  value: CellValue;
-  columnName: string;
-  row: CellValue[];
-  onOpenJsonCell?: (
-    columnName: string,
-    value: JsonValue,
-    row: CellValue[],
-    mode: JsonCellMode
-  ) => void;
-  onStartEdit?: () => void;
-  isPending?: boolean;
-}) {
-  if (value !== null && value !== undefined && typeof value === "object") {
-    return (
-      <button
-        type="button"
-        onClick={() => onOpenJsonCell?.(columnName, value as JsonValue, row, "view")}
-        onDoubleClick={() => onOpenJsonCell?.(columnName, value as JsonValue, row, "edit")}
-        className="flex max-w-[300px] items-center gap-1 font-mono text-xs text-sky-500 hover:underline"
-      >
-        <Braces className="size-3 shrink-0" />
-        <span className="truncate">{JSON.stringify(value)}</span>
-      </button>
-    );
-  }
-
-  return (
-    <div
-      onDoubleClick={onStartEdit}
-      className={`min-h-4 ${onStartEdit ? "cursor-text" : ""} ${
-        isPending ? "-mx-1.5 -my-0.5 rounded bg-amber-500/15 px-1.5 py-0.5 ring-1 ring-amber-500/40" : ""
-      }`}
-    >
-      {value === null || value === undefined ? (
-        <span className="italic text-muted-foreground">NULL</span>
-      ) : typeof value === "boolean" ? (
-        <span className={value ? "text-emerald-500" : "text-muted-foreground"}>
-          {value ? "true" : "false"}
-        </span>
-      ) : (
-        <span className="whitespace-nowrap">{String(value)}</span>
       )}
     </div>
-  );
-}
-
-function InlineCellEditor({
-  value,
-  disabled,
-  onCommit,
-  onCancel,
-}: {
-  value: CellValue;
-  disabled?: boolean;
-  onCommit: (newValue: string | null) => void;
-  onCancel: () => void;
-}) {
-  const [text, setText] = useState(value === null || value === undefined ? "" : String(value));
-
-  function commit() {
-    onCommit(text === "" ? null : text);
-  }
-
-  return (
-    <input
-      autoFocus
-      value={text}
-      disabled={disabled}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          (e.target as HTMLInputElement).blur();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          onCancel();
-        }
-      }}
-      className="absolute inset-0 z-10 w-full min-w-0 rounded-sm border border-ring bg-background px-3 py-1 text-xs outline-none"
-    />
   );
 }

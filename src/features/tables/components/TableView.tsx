@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/src/app/components/ui/select";
 import { ExportButton } from "@/src/components/ExportButton";
-import { DataGrid, type JsonCellMode, type PendingEdit } from "@/src/features/tables/components/DataGrid";
+import { DataGrid, type JsonCellMode, type RowEdit } from "@/src/features/tables/components/DataGrid";
 import { JsonInspectorSheet } from "@/src/features/tables/components/JsonViewer/JsonInspectorSheet";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
 import {
@@ -68,11 +68,12 @@ export function TableView({ tab }: TableViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TableRowsResult | null>(null);
   const [jsonSheet, setJsonSheet] = useState<JsonSheetState | null>(null);
-  const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<RowEdit | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [rowsPendingDelete, setRowsPendingDelete] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -132,17 +133,26 @@ export function TableView({ tab }: TableViewProps) {
 
   async function handleSaveEdit() {
     if (!pendingEdit || !result) return;
+    const changedColumns = Object.keys(pendingEdit.values);
+    if (changedColumns.length === 0) {
+      setPendingEdit(null);
+      return;
+    }
+
     setSaving(true);
     setSaveError(null);
     try {
-      await updateCellText(
-        tab.connectionId,
-        tab.schema,
-        tab.table,
-        rowToObject(result.columns, pendingEdit.row),
-        pendingEdit.columnName,
-        pendingEdit.newValue
-      );
+      const rowObject = rowToObject(result.columns, pendingEdit.row);
+      for (const columnName of changedColumns) {
+        await updateCellText(
+          tab.connectionId,
+          tab.schema,
+          tab.table,
+          rowObject,
+          columnName,
+          pendingEdit.values[columnName]
+        );
+      }
       setPendingEdit(null);
       refresh();
     } catch (err) {
@@ -158,13 +168,14 @@ export function TableView({ tab }: TableViewProps) {
   }
 
   async function handleConfirmDelete() {
-    if (!result || selectedRowIndices.size === 0) return;
+    if (!result || rowsPendingDelete.length === 0) return;
     setDeleting(true);
     setDeleteError(null);
     try {
-      const rowsToDelete = [...selectedRowIndices].map((i) => rowToObject(result.columns, result.rows[i]));
+      const rowsToDelete = rowsPendingDelete.map((i) => rowToObject(result.columns, result.rows[i]));
       await deleteRows(tab.connectionId, tab.schema, tab.table, rowsToDelete);
       setConfirmDeleteOpen(false);
+      setRowsPendingDelete([]);
       refresh();
     } catch (err) {
       setDeleteError(toErrorMessage(err));
@@ -173,7 +184,20 @@ export function TableView({ tab }: TableViewProps) {
     }
   }
 
+  function handleDeleteSelected() {
+    setDeleteError(null);
+    setRowsPendingDelete([...selectedRowIndices]);
+    setConfirmDeleteOpen(true);
+  }
+
+  function handleDeleteRow(rowIndex: number) {
+    setDeleteError(null);
+    setRowsPendingDelete([rowIndex]);
+    setConfirmDeleteOpen(true);
+  }
+
   const selectedCount = selectedRowIndices.size;
+  const pendingFieldCount = pendingEdit ? Object.keys(pendingEdit.values).length : 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -189,7 +213,7 @@ export function TableView({ tab }: TableViewProps) {
               variant="destructive"
               size="xs"
               className="mr-1 gap-1.5"
-              onClick={() => setConfirmDeleteOpen(true)}
+              onClick={handleDeleteSelected}
               disabled={loading}
             >
               <Trash2 className="size-3.5" />
@@ -202,17 +226,24 @@ export function TableView({ tab }: TableViewProps) {
         </div>
       </div>
 
-      {pendingEdit && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-amber-500/10 px-3 py-1.5">
+      {pendingEdit !== null && (
+        <div className="relative z-20 flex shrink-0 items-center justify-between gap-3 border-b bg-amber-500/10 px-3 py-1.5">
           <span className="text-xs text-amber-600 dark:text-amber-400">
-            <strong>{pendingEdit.columnName}</strong> changed — unsaved
+            Editing row {pendingEdit.rowIndex + 1}
+            {pendingFieldCount > 0 &&
+              ` — ${pendingFieldCount} field${pendingFieldCount === 1 ? "" : "s"} changed`}
           </span>
           <div className="flex items-center gap-1.5">
             <Button variant="ghost" size="xs" className="gap-1" onClick={handleDiscardEdit} disabled={saving}>
               <X className="size-3.5" />
               Discard
             </Button>
-            <Button size="xs" className="gap-1" onClick={handleSaveEdit} disabled={saving}>
+            <Button
+              size="xs"
+              className="gap-1"
+              onClick={handleSaveEdit}
+              disabled={saving || pendingFieldCount === 0}
+            >
               {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
               Save
             </Button>
@@ -281,6 +312,7 @@ export function TableView({ tab }: TableViewProps) {
                 mode,
               });
             }}
+            onDeleteRow={handleDeleteRow}
           />
         )}
       </div>
@@ -349,17 +381,21 @@ export function TableView({ tab }: TableViewProps) {
         onSaved={refresh}
       />
 
-      <AlertDialog open={confirmDeleteOpen} onOpenChange={(open) => !deleting && setConfirmDeleteOpen(open)}>
+      <AlertDialog
+        open={confirmDeleteOpen}
+        onOpenChange={(open) => !deleting && setConfirmDeleteOpen(open)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia className="bg-destructive/10 text-destructive">
               <AlertTriangle />
             </AlertDialogMedia>
             <AlertDialogTitle>
-              Delete {selectedCount} row{selectedCount === 1 ? "" : "s"}?
+              Delete {rowsPendingDelete.length} row{rowsPendingDelete.length === 1 ? "" : "s"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes {selectedCount} row{selectedCount === 1 ? "" : "s"} from{" "}
+              This permanently deletes {rowsPendingDelete.length} row
+              {rowsPendingDelete.length === 1 ? "" : "s"} from{" "}
               <strong>
                 {tab.schema}.{tab.table}
               </strong>

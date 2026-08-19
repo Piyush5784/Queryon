@@ -12,6 +12,7 @@ import type { SavedQuery } from "@/src/features/query/api";
 import { createQueryTabId } from "@/src/features/query/types";
 import { tableTabId } from "@/src/features/tables/types";
 import { AppLayout } from "@/src/layouts/AppLayout";
+import { ThemeProvider } from "@/src/app/components/theme-provider";
 import type { AppTab } from "@/src/app/tabs";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 import "@/src/app/styles/globals.css";
@@ -150,37 +151,39 @@ function App() {
   }
 
   return (
-    <div className="h-full">
-      <AppLayout
-        connections={connections}
-        connectedIds={connectedIds}
-        connectingId={connectingId}
-        connectError={connectError}
-        activeConnectionId={activeConnectionId}
-        activeConnection={activeConnection}
-        queryRefreshToken={queryRefreshToken}
-        onSelectConnection={handleSelectConnection}
-        onDeleteConnection={handleDeleteConnection}
-        onOpenTable={handleOpenTable}
-        onNewConnection={() => setDialogOpen(true)}
-        onNewQuery={handleNewQuery}
-        onOpenSavedQuery={handleOpenSavedQuery}
-        onOpenHistoryEntry={handleOpenHistoryEntry}
-        showHome={showHome}
-        onGoHome={() => setShowHome(true)}
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={handleSelectTab}
-        onCloseTab={handleCloseTab}
-        onQueryActivity={handleQueryActivity}
-      />
+    <ThemeProvider defaultTheme="dark" storageKey="queryon-theme">
+      <div className="h-full">
+        <AppLayout
+          connections={connections}
+          connectedIds={connectedIds}
+          connectingId={connectingId}
+          connectError={connectError}
+          activeConnectionId={activeConnectionId}
+          activeConnection={activeConnection}
+          queryRefreshToken={queryRefreshToken}
+          onSelectConnection={handleSelectConnection}
+          onDeleteConnection={handleDeleteConnection}
+          onOpenTable={handleOpenTable}
+          onNewConnection={() => setDialogOpen(true)}
+          onNewQuery={handleNewQuery}
+          onOpenSavedQuery={handleOpenSavedQuery}
+          onOpenHistoryEntry={handleOpenHistoryEntry}
+          showHome={showHome}
+          onGoHome={() => setShowHome(true)}
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={handleSelectTab}
+          onCloseTab={handleCloseTab}
+          onQueryActivity={handleQueryActivity}
+        />
 
-      <ConnectionDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onConnected={handleConnected}
-      />
-    </div>
+        <ConnectionDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          onConnected={handleConnected}
+        />
+      </div>
+    </ThemeProvider>
   );
 }
 

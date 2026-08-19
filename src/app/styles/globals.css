@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "@glideapps/glide-data-grid/dist/index.css";
 
 @custom-variant dark (&:is(.dark *));
 
