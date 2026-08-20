@@ -31,6 +31,7 @@ import {
 } from "@/src/app/components/ui/sidebar";
 import { RenameConnectionDialog } from "@/src/features/connections/components/RenameConnectionDialog";
 import { toDisplayUrl, type SavedConnectionProfile } from "@/src/features/connections/types";
+import { TableDdlDialog } from "@/src/features/schema/components/TableDdlDialog";
 import {
   clearQueryHistory,
   deleteSavedQuery,
@@ -191,6 +192,7 @@ export function ConnectionTreeItem({
           {Object.entries(schemas).map(([schemaName, schemaTables]) => (
             <SchemaGroup
               key={schemaName}
+              connectionId={connection.id}
               schema={schemaName}
               tables={schemaTables}
               onOpenTable={onOpenTable}
@@ -217,10 +219,12 @@ export function ConnectionTreeItem({
 }
 
 function SchemaGroup({
+  connectionId,
   schema,
   tables,
   onOpenTable,
 }: {
+  connectionId: string;
   schema: string;
   tables: TableRef[];
   onOpenTable: (schema: string, table: string) => void;
@@ -243,18 +247,59 @@ function SchemaGroup({
       </SidebarMenuSubItem>
       {open &&
         tables.map((t) => (
-          <SidebarMenuSubItem key={`${t.schema}.${t.name}`}>
-            <SidebarMenuSubButton onClick={() => onOpenTable(t.schema, t.name)}>
-              {t.kind === "table" ? (
-                <Table2 className="size-3.5" />
-              ) : (
-                <Eye className="size-3.5" />
-              )}
-              <span>{t.name}</span>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
+          <TableRow key={`${t.schema}.${t.name}`} connectionId={connectionId} table={t} onOpenTable={onOpenTable} />
         ))}
     </>
+  );
+}
+
+function TableRow({
+  connectionId,
+  table,
+  onOpenTable,
+}: {
+  connectionId: string;
+  table: TableRef;
+  onOpenTable: (schema: string, table: string) => void;
+}) {
+  const [ddlOpen, setDdlOpen] = useState(false);
+
+  return (
+    <SidebarMenuSubItem className="group/table relative">
+      <SidebarMenuSubButton onClick={() => onOpenTable(table.schema, table.name)}>
+        {table.kind === "table" ? (
+          <Table2 className="size-3.5" />
+        ) : (
+          <Eye className="size-3.5" />
+        )}
+        <span>{table.name}</span>
+      </SidebarMenuSubButton>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
+              title="More options"
+              className="absolute top-1/2 right-1 flex size-5 -translate-y-1/2 items-center justify-center rounded-md opacity-0 hover:bg-sidebar-accent group-hover/table:opacity-100"
+            >
+              <MoreHorizontal className="size-3.5" />
+            </button>
+          }
+        />
+        <DropdownMenuContent align="start" side="right">
+          <DropdownMenuItem onClick={() => setDdlOpen(true)}>View DDL</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <TableDdlDialog
+        connectionId={connectionId}
+        schema={table.schema}
+        table={table.name}
+        open={ddlOpen}
+        onOpenChange={setDdlOpen}
+      />
+    </SidebarMenuSubItem>
   );
 }
 

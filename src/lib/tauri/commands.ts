@@ -3,8 +3,19 @@ import type {
   ColumnInfo,
   ConnectionInfo,
   ConnectionProfile,
+  ConstraintInfo,
+  ConstraintKind,
+  ColumnEdit,
+  DdlBatchResult,
+  DdlExecutionResult,
+  DdlPreview,
+  DdlStatement,
   ExportFormat,
   FilterOperator,
+  IndexInfo,
+  NewColumn,
+  NewConstraint,
+  NewIndex,
   QueryHistoryEntry,
   RowsExportRequest,
   SavedConnectionProfile,
@@ -22,8 +33,19 @@ export type {
   ColumnInfo,
   ConnectionInfo,
   ConnectionProfile,
+  ConstraintInfo,
+  ConstraintKind,
+  ColumnEdit,
+  DdlBatchResult,
+  DdlExecutionResult,
+  DdlPreview,
+  DdlStatement,
   ExportFormat,
   FilterOperator,
+  IndexInfo,
+  NewColumn,
+  NewConstraint,
+  NewIndex,
   QueryHistoryEntry,
   RowsExportRequest,
   SavedConnectionProfile,
@@ -129,6 +151,46 @@ export async function getTableColumns(
   table: string
 ): Promise<ColumnInfo[]> {
   return unwrap(await commands.dbGetTableColumns(connectionId, schema, table));
+}
+
+export async function listIndexes(
+  connectionId: string,
+  schema: string,
+  table: string
+): Promise<IndexInfo[]> {
+  return unwrap(await commands.dbListIndexes(connectionId, schema, table));
+}
+
+export async function listConstraints(
+  connectionId: string,
+  schema: string,
+  table: string
+): Promise<ConstraintInfo[]> {
+  return unwrap(await commands.dbListConstraints(connectionId, schema, table));
+}
+
+export async function getTableDdl(
+  connectionId: string,
+  schema: string,
+  table: string
+): Promise<string> {
+  return unwrap(await commands.dbGetTableDdl(connectionId, schema, table));
+}
+
+export async function renderDdl(
+  connectionId: string,
+  schema: string,
+  statements: DdlStatement[]
+): Promise<DdlPreview[]> {
+  return unwrap(await commands.dbRenderDdl(connectionId, schema, statements));
+}
+
+export async function executeDdl(
+  connectionId: string,
+  schema: string,
+  statements: DdlStatement[]
+): Promise<DdlBatchResult> {
+  return unwrap(await commands.dbExecuteDdl(connectionId, schema, statements));
 }
 
 export async function fetchTableRows(

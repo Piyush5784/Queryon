@@ -6,11 +6,13 @@ use sqlx::Row;
 
 use crate::domain::driver::DatabaseDriver;
 use crate::domain::query::RawQueryResult;
-use crate::domain::schema::{ColumnInfo, TableRef};
+use crate::domain::schema::{
+    ColumnInfo, ConstraintInfo, DdlBatchResult, DdlPreview, DdlStatement, IndexInfo, TableRef,
+};
 use crate::domain::table::{TableFilter, TableRowsResult, TableSort};
 use crate::error::AppError;
 
-use super::{executor, metadata};
+use super::{ddl, executor, metadata};
 
 const MAX_PAGE_SIZE: i64 = 10_000;
 
@@ -51,6 +53,58 @@ fn validate_identifier(ident: &str) -> Result<(), AppError> {
         return Err(AppError::new(format!("Invalid identifier: {ident}")));
     }
     Ok(())
+}
+
+/// Validates every *identifier* field on a `DdlStatement` before it
+/// reaches `ddl::render`/`ddl::execute_all`. See the identical function
+/// in `infrastructure/postgres/driver.rs` for why `data_type` and
+/// `check_expression` are deliberately not validated here.
+fn validate_ddl_statement(statement: &DdlStatement) -> Result<(), AppError> {
+    match statement {
+        DdlStatement::AddColumn { table, column } => {
+            validate_identifier(table)?;
+            validate_identifier(&column.name)
+        }
+        DdlStatement::DropColumn { table, column } => {
+            validate_identifier(table)?;
+            validate_identifier(column)
+        }
+        DdlStatement::AlterColumn { table, edit } => {
+            validate_identifier(table)?;
+            validate_identifier(&edit.current_name)?;
+            validate_identifier(&edit.column.name)
+        }
+        DdlStatement::AddIndex { table, index } => {
+            validate_identifier(table)?;
+            validate_identifier(&index.name)?;
+            for col in &index.columns {
+                validate_identifier(col)?;
+            }
+            Ok(())
+        }
+        DdlStatement::DropIndex { table, index } => {
+            validate_identifier(table)?;
+            validate_identifier(index)
+        }
+        DdlStatement::AddConstraint { table, constraint } => {
+            validate_identifier(table)?;
+            validate_identifier(&constraint.name)?;
+            for col in &constraint.columns {
+                validate_identifier(col)?;
+            }
+            if let Some(ref_table) = &constraint.referenced_table {
+                validate_identifier(ref_table)?;
+            }
+            for col in &constraint.referenced_columns {
+                validate_identifier(col)?;
+            }
+            Ok(())
+        }
+        DdlStatement::DropConstraint { table, constraint } => {
+            validate_identifier(table)?;
+            validate_identifier(constraint)
+        }
+    }
 }
 
 fn pk_values_from_row(
@@ -96,6 +150,44 @@ impl DatabaseDriver for MySqlDriver {
 
     async fn get_table_columns(&self, schema: &str, table: &str) -> Result<Vec<ColumnInfo>, AppError> {
         metadata::get_table_columns(&self.pool, schema, table).await
+    }
+
+    async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, AppError> {
+        validate_identifier(schema)?;
+        validate_identifier(table)?;
+        metadata::list_indexes(&self.pool, schema, table).await
+    }
+
+    async fn list_constraints(&self, schema: &str, table: &str) -> Result<Vec<ConstraintInfo>, AppError> {
+        validate_identifier(schema)?;
+        validate_identifier(table)?;
+        metadata::list_constraints(&self.pool, schema, table).await
+    }
+
+    async fn render_ddl(&self, schema: &str, statements: &[DdlStatement]) -> Result<Vec<DdlPreview>, AppError> {
+        validate_identifier(schema)?;
+        for statement in statements {
+            validate_ddl_statement(statement)?;
+        }
+        ddl::render_all(&self.pool, schema, statements).await
+    }
+
+    async fn execute_ddl(
+        &self,
+        schema: &str,
+        statements: &[DdlStatement],
+    ) -> Result<DdlBatchResult, AppError> {
+        validate_identifier(schema)?;
+        for statement in statements {
+            validate_ddl_statement(statement)?;
+        }
+        ddl::execute_all(&self.pool, schema, statements).await
+    }
+
+    async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, AppError> {
+        validate_identifier(schema)?;
+        validate_identifier(table)?;
+        metadata::get_table_ddl(&self.pool, table).await
     }
 
     async fn fetch_table_rows(

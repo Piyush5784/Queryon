@@ -1,0 +1,332 @@
+import { useState } from "react";
+import { Pencil, Plus, RotateCcw, X } from "lucide-react";
+
+import { Button } from "@/src/app/components/ui/button";
+import { Input } from "@/src/app/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/src/app/components/ui/select";
+import { makeTempId, type StagedColumnEdit, type StagedNewColumn } from "@/src/features/schema/staging";
+import type { ColumnInfo } from "@/src/features/tables/api";
+
+const COMMON_TYPES = [
+  "text",
+  "varchar(255)",
+  "int4",
+  "int8",
+  "numeric",
+  "boolean",
+  "timestamptz",
+  "date",
+  "uuid",
+  "jsonb",
+] as const;
+
+const CUSTOM_TYPE = "__custom__";
+
+function DataTypeField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const isCustom = value !== "" && !COMMON_TYPES.includes(value as (typeof COMMON_TYPES)[number]);
+  const [customMode, setCustomMode] = useState(isCustom);
+
+  if (customMode) {
+    return (
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="text, varchar(255), int8, ..."
+        className="h-7 font-mono text-xs"
+        onBlur={() => {
+          if (!value.trim()) setCustomMode(false);
+        }}
+      />
+    );
+  }
+
+  return (
+    <Select
+      value={value || undefined}
+      onValueChange={(next) => {
+        if (!next) return;
+        if (next === CUSTOM_TYPE) {
+          setCustomMode(true);
+          return;
+        }
+        onChange(next);
+      }}
+    >
+      <SelectTrigger size="sm" className="h-7 w-full font-mono text-xs">
+        <SelectValue placeholder="Select type" />
+      </SelectTrigger>
+      <SelectContent>
+        {COMMON_TYPES.map((type) => (
+          <SelectItem key={type} value={type} className="font-mono text-xs">
+            {type}
+          </SelectItem>
+        ))}
+        <SelectItem value={CUSTOM_TYPE} className="text-xs">
+          Custom…
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+function NullableField({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <Select value={value ? "nullable" : "not-nullable"} onValueChange={(next) => onChange(next === "nullable")}>
+      <SelectTrigger size="sm" className="h-7 w-full text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="nullable" className="text-xs">
+          Nullable
+        </SelectItem>
+        <SelectItem value="not-nullable" className="text-xs">
+          Not nullable
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+const COMMON_DEFAULTS = ["NULL", "now()", "''", "0", "true", "false"] as const;
+const CUSTOM_DEFAULT = "__custom_default__";
+
+function DefaultField({ value, onChange }: { value: string | null; onChange: (value: string | null) => void }) {
+  const asSelectValue = value === null ? "NULL" : value;
+  const isCustom = !COMMON_DEFAULTS.includes(asSelectValue as (typeof COMMON_DEFAULTS)[number]);
+  const [customMode, setCustomMode] = useState(isCustom);
+
+  if (customMode) {
+    return (
+      <Input
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        placeholder="e.g. now(), 0, 'active'"
+        className="h-7 font-mono text-xs"
+        onBlur={() => {
+          if (!value?.trim()) setCustomMode(false);
+        }}
+      />
+    );
+  }
+
+  return (
+    <Select
+      value={asSelectValue}
+      onValueChange={(next) => {
+        if (!next) return;
+        if (next === CUSTOM_DEFAULT) {
+          setCustomMode(true);
+          return;
+        }
+        onChange(next === "NULL" ? null : next);
+      }}
+    >
+      <SelectTrigger size="sm" className="h-7 w-full font-mono text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {COMMON_DEFAULTS.map((def) => (
+          <SelectItem key={def} value={def} className="font-mono text-xs">
+            {def}
+          </SelectItem>
+        ))}
+        <SelectItem value={CUSTOM_DEFAULT} className="text-xs">
+          Custom…
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+interface ColumnsTabProps {
+  columns: ColumnInfo[];
+  droppedColumns: string[];
+  editedColumns: StagedColumnEdit[];
+  newColumns: StagedNewColumn[];
+  onToggleDrop: (column: string) => void;
+  onStartEdit: (column: ColumnInfo) => void;
+  onCancelEdit: (currentName: string) => void;
+  onChangeEdit: (currentName: string, patch: Partial<NewColumnLike>) => void;
+  onAddRow: () => void;
+  onRemoveNewRow: (tempId: string) => void;
+  onChangeNewRow: (tempId: string, patch: Partial<StagedNewColumn>) => void;
+}
+
+type NewColumnLike = StagedColumnEdit["column"];
+
+export function ColumnsTab({
+  columns,
+  droppedColumns,
+  editedColumns,
+  newColumns,
+  onToggleDrop,
+  onStartEdit,
+  onCancelEdit,
+  onChangeEdit,
+  onAddRow,
+  onRemoveNewRow,
+  onChangeNewRow,
+}: ColumnsTabProps) {
+  return (
+    <div className="overflow-hidden rounded-lg border">
+      <div className="grid grid-cols-[1fr_1fr_110px_1fr_1fr_60px_52px] items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+        <span>Name</span>
+        <span>Type</span>
+        <span>Nullable</span>
+        <span>Default</span>
+        <span>Comment</span>
+        <span>Primary</span>
+        <span />
+      </div>
+
+      <div className="divide-y">
+        {columns.map((column) => {
+          const dropped = droppedColumns.includes(column.name);
+          const edit = editedColumns.find((e) => e.currentName === column.name);
+
+          if (edit) {
+            return (
+              <div
+                key={column.name}
+                className="grid grid-cols-[1fr_1fr_110px_1fr_1fr_60px_52px] items-center gap-2 bg-amber-500/5 px-3 py-1.5"
+              >
+                <Input
+                  value={edit.column.name}
+                  onChange={(e) => onChangeEdit(column.name, { name: e.target.value })}
+                  className="h-7 font-mono text-xs"
+                  autoFocus
+                />
+                <DataTypeField
+                  value={edit.column.dataType}
+                  onChange={(dataType) => onChangeEdit(column.name, { dataType })}
+                />
+                <NullableField
+                  value={edit.column.isNullable}
+                  onChange={(isNullable) => onChangeEdit(column.name, { isNullable })}
+                />
+                <DefaultField
+                  value={edit.column.default}
+                  onChange={(value) => onChangeEdit(column.name, { default: value })}
+                />
+                <span className="truncate text-xs text-muted-foreground">—</span>
+                <div>{column.isPrimaryKey && <span className="text-emerald-500">✓</span>}</div>
+                <button
+                  type="button"
+                  title="Cancel edit"
+                  onClick={() => onCancelEdit(column.name)}
+                  className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={column.name}
+              className={`grid grid-cols-[1fr_1fr_110px_1fr_1fr_60px_52px] items-center gap-2 px-3 py-1.5 text-xs ${
+                dropped ? "bg-destructive/5 text-muted-foreground line-through" : ""
+              }`}
+            >
+              <span className="truncate font-mono font-medium">{column.name}</span>
+              <span className="truncate font-mono text-muted-foreground">{column.dataType}</span>
+              <span className="truncate text-muted-foreground">{column.isNullable ? "Nullable" : "Not nullable"}</span>
+              <span className="truncate font-mono text-muted-foreground">{column.default ?? "NULL"}</span>
+              <span className="truncate text-muted-foreground">—</span>
+              <div>{column.isPrimaryKey && <span className="text-emerald-500">✓</span>}</div>
+              <div className="flex items-center gap-1">
+                {!dropped && (
+                  <button
+                    type="button"
+                    title="Edit column"
+                    onClick={() => onStartEdit(column)}
+                    className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                  >
+                    <Pencil className="size-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  title={dropped ? "Undo drop" : "Drop column"}
+                  onClick={() => onToggleDrop(column.name)}
+                  className={`flex size-5 items-center justify-center rounded hover:bg-destructive/10 hover:text-destructive ${
+                    dropped ? "text-destructive" : "text-muted-foreground"
+                  }`}
+                >
+                  {dropped ? <RotateCcw className="size-3.5" /> : <X className="size-3.5" />}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {newColumns.map((column) => (
+          <div
+            key={column.tempId}
+            className="grid grid-cols-[1fr_1fr_110px_1fr_1fr_60px_52px] items-center gap-2 bg-primary/5 px-3 py-1.5"
+          >
+            <Input
+              value={column.name}
+              onChange={(e) => onChangeNewRow(column.tempId, { name: e.target.value })}
+              placeholder="column_name"
+              className="h-7 font-mono text-xs"
+              autoFocus
+            />
+            <DataTypeField
+              value={column.dataType}
+              onChange={(dataType) => onChangeNewRow(column.tempId, { dataType })}
+            />
+            <NullableField
+              value={column.isNullable}
+              onChange={(isNullable) => onChangeNewRow(column.tempId, { isNullable })}
+            />
+            <DefaultField
+              value={column.default}
+              onChange={(value) => onChangeNewRow(column.tempId, { default: value })}
+            />
+            <span className="truncate text-xs text-muted-foreground">—</span>
+            <div />
+            <button
+              type="button"
+              title="Remove"
+              onClick={() => onRemoveNewRow(column.tempId)}
+              className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t px-3 py-1.5">
+        <Button variant="ghost" size="xs" className="gap-1.5 text-primary" onClick={onAddRow}>
+          <Plus className="size-3" />
+          Add column
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function newColumnRow(): StagedNewColumn {
+  return { tempId: makeTempId(), name: "", dataType: "", isNullable: true, default: null };
+}
+
+export function editRowFor(column: ColumnInfo): StagedColumnEdit {
+  return {
+    currentName: column.name,
+    column: {
+      name: column.name,
+      dataType: column.dataType,
+      isNullable: column.isNullable,
+      default: column.default,
+    },
+  };
+}

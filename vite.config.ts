@@ -15,6 +15,19 @@ export default defineConfig(async () => ({
     },
   },
 
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "data-grid": ["@glideapps/glide-data-grid"],
+          codemirror: ["@uiw/react-codemirror", "@codemirror/lang-sql", "@codemirror/view"],
+          charts: ["recharts"],
+        },
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

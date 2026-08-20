@@ -28,6 +28,7 @@ import { Input } from "@/src/app/components/ui/input";
 import { CopyButton } from "@/src/components/CopyButton";
 import { ExportButton } from "@/src/components/ExportButton";
 import { DataGrid, type JsonCellMode, type RowEdit } from "@/src/features/tables/components/DataGrid";
+import { TableStructureView } from "@/src/features/schema/components/TableStructureView";
 import { JsonInspectorSheet } from "@/src/features/tables/components/JsonViewer/JsonInspectorSheet";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
 import { TableFilterBar } from "@/src/features/tables/components/TableFilterBar";
@@ -64,7 +65,10 @@ interface JsonSheetState {
 const DEFAULT_PAGE_SIZE = 200;
 const MAX_PAGE_SIZE = 10000;
 
+type ViewMode = "data" | "structure";
+
 export function TableView({ tab }: TableViewProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>("data");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageSizeInput, setPageSizeInput] = useState(String(DEFAULT_PAGE_SIZE));
@@ -305,11 +309,28 @@ export function TableView({ tab }: TableViewProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">
             {tab.schema}.{tab.table}
           </span>
+          <div className="flex items-center gap-1 rounded-lg border p-0.5">
+            <Button
+              variant={viewMode === "data" ? "secondary" : "ghost"}
+              size="xs"
+              onClick={() => setViewMode("data")}
+            >
+              Data
+            </Button>
+            <Button
+              variant={viewMode === "structure" ? "secondary" : "ghost"}
+              size="xs"
+              onClick={() => setViewMode("structure")}
+            >
+              Structure
+            </Button>
+          </div>
         </div>
+        {viewMode === "data" && (
         <div className="flex items-center gap-1">
           {selectedCount > 0 && (
             <Button
@@ -337,8 +358,15 @@ export function TableView({ tab }: TableViewProps) {
             <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
+        )}
       </div>
 
+      {viewMode === "structure" && (
+        <TableStructureView connectionId={tab.connectionId} schema={tab.schema} table={tab.table} />
+      )}
+
+      {viewMode === "data" && (
+      <>
       <TableToolbar
         columns={result?.columns ?? []}
         filters={filters}
@@ -537,6 +565,8 @@ export function TableView({ tab }: TableViewProps) {
           />
         </div>
       </div>
+      </>
+      )}
 
       <JsonInspectorSheet
         open={jsonSheet !== null}

@@ -15,6 +15,11 @@ export const commands = {
 	dbRenameSavedConnection: (connectionId: string, name: string) => typedError<null, AppError>(__TAURI_INVOKE("db_rename_saved_connection", { connectionId, name })),
 	dbListTables: (connectionId: string) => typedError<TableRef[], AppError>(__TAURI_INVOKE("db_list_tables", { connectionId })),
 	dbGetTableColumns: (connectionId: string, schema: string, table: string) => typedError<ColumnInfo[], AppError>(__TAURI_INVOKE("db_get_table_columns", { connectionId, schema, table })),
+	dbListIndexes: (connectionId: string, schema: string, table: string) => typedError<IndexInfo[], AppError>(__TAURI_INVOKE("db_list_indexes", { connectionId, schema, table })),
+	dbListConstraints: (connectionId: string, schema: string, table: string) => typedError<ConstraintInfo[], AppError>(__TAURI_INVOKE("db_list_constraints", { connectionId, schema, table })),
+	dbGetTableDdl: (connectionId: string, schema: string, table: string) => typedError<string, AppError>(__TAURI_INVOKE("db_get_table_ddl", { connectionId, schema, table })),
+	dbRenderDdl: (connectionId: string, schema: string, statements: DdlStatement[]) => typedError<DdlPreview[], AppError>(__TAURI_INVOKE("db_render_ddl", { connectionId, schema, statements })),
+	dbExecuteDdl: (connectionId: string, schema: string, statements: DdlStatement[]) => typedError<DdlBatchResult, AppError>(__TAURI_INVOKE("db_execute_ddl", { connectionId, schema, statements })),
 	dbFetchTableRows: (connectionId: string, schema: string, table: string, limit: number, offset: number, filters: TableFilter[], sort: TableSort[]) => typedError<TableRowsResult, AppError>(__TAURI_INVOKE("db_fetch_table_rows", { connectionId, schema, table, limit, offset, filters, sort })),
 	dbCountTableRows: (connectionId: string, schema: string, table: string, filters: TableFilter[]) => typedError<number, AppError>(__TAURI_INVOKE("db_count_table_rows", { connectionId, schema, table, filters })),
 	dbUpdateJsonCell: (connectionId: string, schema: string, table: string, row: { [key in string]: string }, column: string, value: string) => typedError<null, AppError>(__TAURI_INVOKE("db_update_json_cell", { connectionId, schema, table, row, column, value })),
@@ -56,6 +61,19 @@ export const commands = {
 /* Types */
 export type AppError = string;
 
+/**
+ *  An existing column's edited definition, as submitted from the
+ *  frontend's inline column editor. `current_name` locates the column;
+ *  `column` carries its full target shape (name, type, nullable,
+ *  default) — MySQL's `MODIFY COLUMN` must restate the whole definition
+ *  regardless of which fields actually changed, so this always carries
+ *  all of them rather than a sparse patch.
+ */
+export type ColumnEdit = {
+	currentName: string,
+	column: NewColumn,
+};
+
 export type ColumnInfo = {
 	name: string,
 	dataType: string,
@@ -82,6 +100,69 @@ export type ConnectionProfile = {
 	sslMode: SslMode,
 };
 
+export type ConstraintInfo = {
+	name: string,
+	kind: ConstraintKind,
+	columns: string[],
+	/**
+	 *  Set only for `ForeignKey` — the referenced table and its columns,
+	 *  positionally matched to `columns`.
+	 */
+	referencedTable: string | null,
+	referencedColumns: string[],
+	/**
+	 *  Set only for `Check` — the constraint's boolean expression, as the
+	 *  engine reports it back (already-normalized text, not necessarily
+	 *  what the user originally typed).
+	 */
+	checkExpression: string | null,
+};
+
+export type ConstraintKind = "primary-key" | "foreign-key" | "unique" | "check";
+
+/**
+ *  The result of running a batch of `DdlStatement`s together.
+ * 
+ *  Postgres runs the whole batch inside one transaction: if any statement
+ *  fails, every statement in the batch is rolled back and `rolled_back`
+ *  is `true` — nothing in the batch is left applied.
+ * 
+ *  MySQL cannot offer this guarantee — every DDL statement there
+ *  auto-commits immediately, so a failure can never undo earlier
+ *  statements in the same batch no matter what the client does. On
+ *  MySQL, execution simply stops at the first failure and `rolled_back`
+ *  is always `false`; statements before the failure stay applied.
+ */
+export type DdlBatchResult = {
+	results: DdlExecutionResult[],
+	rolledBack: boolean,
+};
+
+/**  The result of running one `DdlStatement` within a batch. */
+export type DdlExecutionResult = {
+	sql: string,
+	success: boolean,
+	error: string | null,
+};
+
+/**
+ *  One rendered statement plus the raw SQL that will run for it — what
+ *  the frontend's DDL-preview step shows before the user confirms
+ *  execution (see Phase-3 doc, "generate DDL, show it, let you
+ *  review/edit it, then run it").
+ */
+export type DdlPreview = {
+	sql: string,
+};
+
+/**
+ *  One engine-agnostic schema-write operation. Each `DatabaseDriver`
+ *  implementation renders these into its own DDL dialect (see
+ *  `infrastructure/{postgres,mysql}/ddl.rs`) — the frontend and the
+ *  `domain` layer never construct raw SQL strings for writes.
+ */
+export type DdlStatement = { op: "addColumn"; table: string; column: NewColumn } | { op: "dropColumn"; table: string; column: string } | { op: "alterColumn"; table: string; edit: ColumnEdit } | { op: "addIndex"; table: string; index: NewIndex } | { op: "dropIndex"; table: string; index: string } | { op: "addConstraint"; table: string; constraint: NewConstraint } | { op: "dropConstraint"; table: string; constraint: string };
+
 /**
  *  Which `DatabaseDriver` a profile connects through. `Neon` is not a
  *  distinct wire protocol — it's Postgres with Neon-friendly defaults
@@ -102,6 +183,52 @@ export type FilterOperator = "equals" | "not-equals" | "greater-than" | "greater
 "ilike" | "not-like" | 
 /**  `value` is a comma-separated list; matches if the column equals any of them. */
 "in" | "is-null" | "is-not-null";
+
+export type IndexInfo = {
+	name: string,
+	columns: string[],
+	isUnique: boolean,
+	isPrimary: boolean,
+};
+
+/**
+ *  A new column's definition, as submitted from the frontend's "Add
+ *  column" form. `data_type` is a raw engine-dialect type string (e.g.
+ *  `text`, `varchar(255)`, `int8`) — not validated against a fixed enum,
+ *  since the set of valid types differs per engine and this app doesn't
+ *  maintain its own type catalog.
+ */
+export type NewColumn = {
+	name: string,
+	dataType: string,
+	isNullable: boolean,
+	default: string | null,
+};
+
+/**
+ *  A new constraint's definition, as submitted from the frontend's "Add
+ *  constraint" form. Which fields apply depends on `kind`, mirroring
+ *  `ConstraintInfo`'s own shape (see its doc comments for which fields
+ *  are set for which kind).
+ */
+export type NewConstraint = {
+	name: string,
+	kind: ConstraintKind,
+	columns: string[],
+	referencedTable: string | null,
+	referencedColumns: string[],
+	checkExpression: string | null,
+};
+
+/**
+ *  A new index's definition, as submitted from the frontend's "Add
+ *  index" form.
+ */
+export type NewIndex = {
+	name: string,
+	columns: string[],
+	isUnique: boolean,
+};
 
 export type QueryHistoryEntry = {
 	id: string,

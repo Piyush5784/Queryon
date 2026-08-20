@@ -1,7 +1,7 @@
 use sqlx::mysql::MySqlPool;
-use sqlx::Row;
+use sqlx::{AssertSqlSafe, Row};
 
-use crate::domain::schema::{ColumnInfo, TableRef};
+use crate::domain::schema::{ColumnInfo, ConstraintInfo, ConstraintKind, IndexInfo, TableRef};
 use crate::error::AppError;
 
 /// MySQL has no schema layer distinct from the database itself —
@@ -99,4 +99,135 @@ pub async fn get_table_columns(
             }
         })
         .collect())
+}
+
+pub async fn list_indexes(pool: &MySqlPool, database: &str, table: &str) -> Result<Vec<IndexInfo>, AppError> {
+    let rows = sqlx::query(
+        r#"
+        select
+            index_name as index_name,
+            (non_unique = 0) as is_unique,
+            (index_name = 'PRIMARY') as is_primary,
+            group_concat(column_name order by seq_in_index) as columns
+        from information_schema.statistics
+        where table_schema = ? and table_name = ?
+        group by index_name, non_unique
+        order by index_name
+        "#,
+    )
+    .bind(database)
+    .bind(table)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| AppError::new(format!("Failed to list indexes: {e}")))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let columns: String = row.get("columns");
+            IndexInfo {
+                name: row.get("index_name"),
+                columns: columns.split(',').map(|s| s.to_string()).collect(),
+                is_unique: row.get("is_unique"),
+                is_primary: row.get("is_primary"),
+            }
+        })
+        .collect())
+}
+
+pub async fn list_constraints(
+    pool: &MySqlPool,
+    database: &str,
+    table: &str,
+) -> Result<Vec<ConstraintInfo>, AppError> {
+    let rows = sqlx::query(
+        r#"
+        select
+            tc.constraint_name as constraint_name,
+            tc.constraint_type as constraint_type,
+            group_concat(distinct kcu.column_name order by kcu.ordinal_position) as columns,
+            max(kcu.referenced_table_name) as referenced_table,
+            group_concat(distinct kcu.referenced_column_name order by kcu.ordinal_position) as referenced_columns
+        from information_schema.table_constraints tc
+        join information_schema.key_column_usage kcu
+            on kcu.constraint_name = tc.constraint_name
+            and kcu.table_schema = tc.table_schema
+            and kcu.table_name = tc.table_name
+        where tc.table_schema = ? and tc.table_name = ?
+            and tc.constraint_type in ('PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE')
+        group by tc.constraint_name, tc.constraint_type
+        order by tc.constraint_name
+        "#,
+    )
+    .bind(database)
+    .bind(table)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| AppError::new(format!("Failed to list constraints: {e}")))?;
+
+    let mut constraints: Vec<ConstraintInfo> = rows
+        .into_iter()
+        .map(|row| {
+            let constraint_type: String = row.get("constraint_type");
+            let kind = match constraint_type.as_str() {
+                "PRIMARY KEY" => ConstraintKind::PrimaryKey,
+                "FOREIGN KEY" => ConstraintKind::ForeignKey,
+                _ => ConstraintKind::Unique,
+            };
+            let columns: String = row.get("columns");
+            let referenced_columns: Option<String> = row.try_get("referenced_columns").ok();
+            ConstraintInfo {
+                name: row.get("constraint_name"),
+                kind,
+                columns: columns.split(',').map(|s| s.to_string()).collect(),
+                referenced_table: row.try_get("referenced_table").ok(),
+                referenced_columns: referenced_columns
+                    .map(|c| c.split(',').map(|s| s.to_string()).collect())
+                    .unwrap_or_default(),
+                check_expression: None,
+            }
+        })
+        .collect();
+
+    let check_rows = sqlx::query(
+        r#"
+        select cc.constraint_name as constraint_name, cc.check_clause as check_clause
+        from information_schema.check_constraints cc
+        join information_schema.table_constraints tc
+            on tc.constraint_name = cc.constraint_name
+            and tc.constraint_schema = cc.constraint_schema
+        where tc.table_schema = ? and tc.table_name = ? and tc.constraint_type = 'CHECK'
+        "#,
+    )
+    .bind(database)
+    .bind(table)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| AppError::new(format!("Failed to list check constraints: {e}")))?;
+
+    for row in check_rows {
+        constraints.push(ConstraintInfo {
+            name: row.get("constraint_name"),
+            kind: ConstraintKind::Check,
+            columns: Vec::new(),
+            referenced_table: None,
+            referenced_columns: Vec::new(),
+            check_expression: row.get("check_clause"),
+        });
+    }
+
+    Ok(constraints)
+}
+
+pub async fn get_table_ddl(pool: &MySqlPool, table: &str) -> Result<String, AppError> {
+    let sql = format!("show create table `{}`", table.replace('`', "``"));
+    let row = sqlx::query(AssertSqlSafe(sql))
+        .fetch_one(pool)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to get table DDL: {e}")))?;
+
+    let ddl: String = row.try_get("Create Table").map_err(|e| {
+        AppError::new(format!("Unexpected response reading table DDL: {e}"))
+    })?;
+    Ok(ddl)
 }
