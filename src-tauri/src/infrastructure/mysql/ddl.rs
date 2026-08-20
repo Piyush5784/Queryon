@@ -12,21 +12,34 @@ fn clean_mysql_error(err: &sqlx::Error) -> String {
     crate::error::describe_mysql_error(err)
 }
 
-fn render_add_column(_schema: &str, table: &str, column: &NewColumn) -> String {
+fn render_column_def(column: &NewColumn) -> String {
     let nullability = if column.is_nullable { "" } else { " not null" };
     let default = column
         .default
         .as_ref()
         .map(|d| format!(" default {d}"))
         .unwrap_or_default();
-    format!(
-        "alter table {} add column {} {}{}{};",
-        quote_ident(table),
-        quote_ident(&column.name),
-        column.data_type,
-        nullability,
-        default
-    )
+    format!("{} {}{}{}", quote_ident(&column.name), column.data_type, nullability, default)
+}
+
+fn render_create_table(_schema: &str, table: &str, columns: &[NewColumn]) -> Result<String, AppError> {
+    if columns.is_empty() {
+        return Err(AppError::new("A table needs at least one column."));
+    }
+    let column_defs = columns.iter().map(render_column_def).collect::<Vec<_>>().join(", ");
+    Ok(format!("create table {} ({});", quote_ident(table), column_defs))
+}
+
+fn render_rename_table(_schema: &str, table: &str, new_name: &str) -> String {
+    format!("rename table {} to {};", quote_ident(table), quote_ident(new_name))
+}
+
+fn render_drop_table(_schema: &str, table: &str) -> String {
+    format!("drop table {};", quote_ident(table))
+}
+
+fn render_add_column(_schema: &str, table: &str, column: &NewColumn) -> String {
+    format!("alter table {} add column {};", quote_ident(table), render_column_def(column))
 }
 
 fn render_drop_column(_schema: &str, table: &str, column: &str) -> String {
@@ -153,6 +166,9 @@ pub fn render(
     drop_constraint_kind: Option<&DdlDropConstraintKindHint>,
 ) -> Result<String, AppError> {
     match statement {
+        DdlStatement::CreateTable { table, columns } => render_create_table(schema, table, columns),
+        DdlStatement::RenameTable { table, new_name } => Ok(render_rename_table(schema, table, new_name)),
+        DdlStatement::DropTable { table } => Ok(render_drop_table(schema, table)),
         DdlStatement::AddColumn { table, column } => Ok(render_add_column(schema, table, column)),
         DdlStatement::DropColumn { table, column } => Ok(render_drop_column(schema, table, column)),
         DdlStatement::AlterColumn { table, edit } => Ok(render_alter_column(schema, table, edit)),

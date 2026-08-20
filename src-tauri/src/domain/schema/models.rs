@@ -111,9 +111,21 @@ pub struct ColumnEdit {
 /// implementation renders these into its own DDL dialect (see
 /// `infrastructure/{postgres,mysql}/ddl.rs`) — the frontend and the
 /// `domain` layer never construct raw SQL strings for writes.
+///
+/// `CreateTable` takes a full column list rather than decomposing into
+/// per-column `AddColumn`s — a brand-new table is one `CREATE TABLE`
+/// statement, not N `ALTER TABLE`s. Indexes/constraints on a new table
+/// are staged as ordinary `AddIndex`/`AddConstraint` statements in the
+/// same batch, executed after the `CreateTable` — this composes out of
+/// the existing add machinery rather than duplicating it (see Phase-3
+/// doc, milestone 7: "should mostly compose out of milestones 2-6").
 #[derive(Debug, Clone, Deserialize, Type)]
 #[serde(rename_all = "camelCase", tag = "op")]
 pub enum DdlStatement {
+    CreateTable { table: String, columns: Vec<NewColumn> },
+    #[serde(rename_all = "camelCase")]
+    RenameTable { table: String, new_name: String },
+    DropTable { table: String },
     AddColumn { table: String, column: NewColumn },
     DropColumn { table: String, column: String },
     AlterColumn { table: String, edit: ColumnEdit },

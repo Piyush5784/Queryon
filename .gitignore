@@ -16,6 +16,10 @@ src-tauri/gen/schemas/
 *.key
 *credentials*
 *secret*
+graphify-out
+.graphifyignore
+.claude
+temp
 
 CLAUDE.md
 

@@ -61,6 +61,18 @@ fn validate_identifier(ident: &str) -> Result<(), AppError> {
 /// `check_expression` are deliberately not validated here.
 fn validate_ddl_statement(statement: &DdlStatement) -> Result<(), AppError> {
     match statement {
+        DdlStatement::CreateTable { table, columns } => {
+            validate_identifier(table)?;
+            for column in columns {
+                validate_identifier(&column.name)?;
+            }
+            Ok(())
+        }
+        DdlStatement::RenameTable { table, new_name } => {
+            validate_identifier(table)?;
+            validate_identifier(new_name)
+        }
+        DdlStatement::DropTable { table } => validate_identifier(table),
         DdlStatement::AddColumn { table, column } => {
             validate_identifier(table)?;
             validate_identifier(&column.name)

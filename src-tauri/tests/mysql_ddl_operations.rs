@@ -290,3 +290,122 @@ async fn execute_ddl_add_foreign_key_and_drop() {
     raw_exec(&driver, "drop table ddl_fk_child;").await;
     raw_exec(&driver, "drop table ddl_fk_parent;").await;
 }
+
+#[tokio::test]
+async fn execute_ddl_create_table_with_index_and_constraint() {
+    let driver = dev_driver().await;
+    raw_exec(&driver, "drop table if exists ddl_create_test;").await;
+
+    let statements = vec![
+        DdlStatement::CreateTable {
+            table: "ddl_create_test".to_string(),
+            columns: vec![
+                // MySQL requires an auto_increment column to be a key
+                // at CREATE TABLE time — it cannot be added as a
+                // separate ALTER TABLE ADD CONSTRAINT afterward the way
+                // Postgres's `serial` can. Since NewColumn has no way to
+                // declare "primary key" inline, this test uses a plain
+                // int and adds the primary key as its own statement,
+                // which is a shape MySQL does allow after the fact.
+                NewColumn {
+                    name: "id".to_string(),
+                    data_type: "int".to_string(),
+                    is_nullable: false,
+                    default: None,
+                },
+                NewColumn {
+                    name: "email".to_string(),
+                    data_type: "varchar(255)".to_string(),
+                    is_nullable: false,
+                    default: None,
+                },
+            ],
+        },
+        DdlStatement::AddConstraint {
+            table: "ddl_create_test".to_string(),
+            constraint: NewConstraint {
+                name: "ddl_create_test_pkey".to_string(),
+                kind: ConstraintKind::PrimaryKey,
+                columns: vec!["id".to_string()],
+                referenced_table: None,
+                referenced_columns: vec![],
+                check_expression: None,
+            },
+        },
+        DdlStatement::AddIndex {
+            table: "ddl_create_test".to_string(),
+            index: NewIndex {
+                name: "ddl_create_test_email_idx".to_string(),
+                columns: vec!["email".to_string()],
+                is_unique: true,
+            },
+        },
+    ];
+
+    let batch = schema_service::execute_ddl(&driver, "devdb", &statements)
+        .await
+        .expect("create table execute_ddl failed");
+    for result in &batch.results {
+        assert!(result.success, "{:?}", result.error);
+    }
+
+    let columns = schema_service::get_table_columns(&driver, "devdb", "ddl_create_test")
+        .await
+        .expect("get_table_columns failed");
+    assert!(columns.iter().any(|c| c.name == "id"));
+    assert!(columns.iter().any(|c| c.name == "email"));
+
+    let constraints = schema_service::list_constraints(&driver, "devdb", "ddl_create_test")
+        .await
+        .expect("list_constraints failed");
+    // MySQL always names primary key constraints "PRIMARY" regardless of
+    // the name requested in ADD CONSTRAINT ... PRIMARY KEY — confirmed
+    // directly against a live container, not a bug in our code.
+    assert!(constraints.iter().any(|c| c.kind == ConstraintKind::PrimaryKey && c.name == "PRIMARY"));
+
+    let indexes = schema_service::list_indexes(&driver, "devdb", "ddl_create_test")
+        .await
+        .expect("list_indexes failed");
+    assert!(indexes.iter().any(|i| i.name == "ddl_create_test_email_idx"));
+
+    raw_exec(&driver, "drop table ddl_create_test;").await;
+}
+
+#[tokio::test]
+async fn execute_ddl_rename_table() {
+    let driver = dev_driver().await;
+    raw_exec(&driver, "drop table if exists ddl_rename_test;").await;
+    raw_exec(&driver, "drop table if exists ddl_rename_test_2;").await;
+    raw_exec(&driver, "create table ddl_rename_test (id int primary key auto_increment);").await;
+
+    let statements = vec![DdlStatement::RenameTable {
+        table: "ddl_rename_test".to_string(),
+        new_name: "ddl_rename_test_2".to_string(),
+    }];
+    let batch = schema_service::execute_ddl(&driver, "devdb", &statements)
+        .await
+        .expect("rename table execute_ddl failed");
+    assert!(batch.results[0].success, "{:?}", batch.results[0].error);
+
+    let tables = schema_service::list_tables(&driver).await.expect("list_tables failed");
+    assert!(!tables.iter().any(|t| t.name == "ddl_rename_test"));
+    assert!(tables.iter().any(|t| t.name == "ddl_rename_test_2"));
+
+    raw_exec(&driver, "drop table ddl_rename_test_2;").await;
+}
+
+#[tokio::test]
+async fn execute_ddl_drop_table() {
+    let driver = dev_driver().await;
+    raw_exec(&driver, "drop table if exists ddl_drop_test;").await;
+    raw_exec(&driver, "create table ddl_drop_test (id int primary key auto_increment);").await;
+
+    let statements = vec![DdlStatement::DropTable { table: "ddl_drop_test".to_string() }];
+    let batch = schema_service::execute_ddl(&driver, "devdb", &statements)
+        .await
+        .expect("drop table execute_ddl failed");
+    assert!(batch.results[0].success, "{:?}", batch.results[0].error);
+
+    let tables = schema_service::list_tables(&driver).await.expect("list_tables failed");
+    assert!(!tables.iter().any(|t| t.name == "ddl_drop_test"));
+}

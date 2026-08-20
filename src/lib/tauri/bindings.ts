@@ -160,8 +160,16 @@ export type DdlPreview = {
  *  implementation renders these into its own DDL dialect (see
  *  `infrastructure/{postgres,mysql}/ddl.rs`) — the frontend and the
  *  `domain` layer never construct raw SQL strings for writes.
+ * 
+ *  `CreateTable` takes a full column list rather than decomposing into
+ *  per-column `AddColumn`s — a brand-new table is one `CREATE TABLE`
+ *  statement, not N `ALTER TABLE`s. Indexes/constraints on a new table
+ *  are staged as ordinary `AddIndex`/`AddConstraint` statements in the
+ *  same batch, executed after the `CreateTable` — this composes out of
+ *  the existing add machinery rather than duplicating it (see Phase-3
+ *  doc, milestone 7: "should mostly compose out of milestones 2-6").
  */
-export type DdlStatement = { op: "addColumn"; table: string; column: NewColumn } | { op: "dropColumn"; table: string; column: string } | { op: "alterColumn"; table: string; edit: ColumnEdit } | { op: "addIndex"; table: string; index: NewIndex } | { op: "dropIndex"; table: string; index: string } | { op: "addConstraint"; table: string; constraint: NewConstraint } | { op: "dropConstraint"; table: string; constraint: string };
+export type DdlStatement = { op: "createTable"; table: string; columns: NewColumn[] } | { op: "renameTable"; table: string; newName: string } | { op: "dropTable"; table: string } | { op: "addColumn"; table: string; column: NewColumn } | { op: "dropColumn"; table: string; column: string } | { op: "alterColumn"; table: string; edit: ColumnEdit } | { op: "addIndex"; table: string; index: NewIndex } | { op: "dropIndex"; table: string; index: string } | { op: "addConstraint"; table: string; constraint: NewConstraint } | { op: "dropConstraint"; table: string; constraint: string };
 
 /**
  *  Which `DatabaseDriver` a profile connects through. `Neon` is not a

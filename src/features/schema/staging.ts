@@ -130,3 +130,49 @@ export function makeTempId(): string {
   nextTempId += 1;
   return `tmp_${nextTempId}`;
 }
+
+// A new table's staged shape — reuses the same column/index/constraint
+// row types as an existing table's editor, but composes into one
+// CreateTable statement plus AddIndex/AddConstraint statements rather
+// than AddColumns, since a brand-new table has no rows to alter yet
+// (see Phase-3 doc, milestone 7).
+export interface NewTableChanges {
+  columns: StagedNewColumn[];
+  indexes: StagedNewIndex[];
+  constraints: StagedNewConstraint[];
+}
+
+export function emptyNewTableChanges(): NewTableChanges {
+  return { columns: [newColumnRowShape()], indexes: [], constraints: [] };
+}
+
+function newColumnRowShape(): StagedNewColumn {
+  return { tempId: makeTempId(), name: "", dataType: "", isNullable: true, default: null };
+}
+
+export function isNewTableValid(name: string, changes: NewTableChanges): boolean {
+  return (
+    name.trim().length > 0 &&
+    changes.columns.length > 0 &&
+    changes.columns.every(isColumnValid) &&
+    changes.indexes.every(isIndexValid) &&
+    changes.constraints.every(isConstraintValid)
+  );
+}
+
+export function toCreateTableStatements(name: string, changes: NewTableChanges): DdlStatement[] {
+  const statements: DdlStatement[] = [
+    {
+      op: "createTable",
+      table: name,
+      columns: changes.columns.map(({ tempId: _tempId, ...column }) => column),
+    },
+  ];
+  for (const { tempId: _tempId, ...index } of changes.indexes) {
+    statements.push({ op: "addIndex", table: name, index });
+  }
+  for (const { tempId: _tempId, ...constraint } of changes.constraints) {
+    statements.push({ op: "addConstraint", table: name, constraint });
+  }
+  return statements;
+}

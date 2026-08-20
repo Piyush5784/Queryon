@@ -287,3 +287,126 @@ async fn render_ddl_rejects_invalid_identifier() {
     let result = schema_service::render_ddl(&driver, "public", &statements).await;
     assert!(result.is_err(), "an invalid identifier should be rejected before rendering");
 }
+
+#[tokio::test]
+async fn execute_ddl_create_table_with_index_and_constraint() {
+    let driver = dev_driver().await;
+    raw_exec(&driver, "drop table if exists ddl_create_test;").await;
+
+    let statements = vec![
+        DdlStatement::CreateTable {
+            table: "ddl_create_test".to_string(),
+            columns: vec![
+                NewColumn {
+                    name: "id".to_string(),
+                    data_type: "serial".to_string(),
+                    is_nullable: false,
+                    default: None,
+                },
+                NewColumn {
+                    name: "email".to_string(),
+                    data_type: "text".to_string(),
+                    is_nullable: false,
+                    default: None,
+                },
+            ],
+        },
+        DdlStatement::AddConstraint {
+            table: "ddl_create_test".to_string(),
+            constraint: NewConstraint {
+                name: "ddl_create_test_pkey".to_string(),
+                kind: ConstraintKind::PrimaryKey,
+                columns: vec!["id".to_string()],
+                referenced_table: None,
+                referenced_columns: vec![],
+                check_expression: None,
+            },
+        },
+        DdlStatement::AddIndex {
+            table: "ddl_create_test".to_string(),
+            index: NewIndex {
+                name: "ddl_create_test_email_idx".to_string(),
+                columns: vec!["email".to_string()],
+                is_unique: true,
+            },
+        },
+    ];
+
+    let batch = schema_service::execute_ddl(&driver, "public", &statements)
+        .await
+        .expect("create table execute_ddl failed");
+    assert!(!batch.rolled_back);
+    for result in &batch.results {
+        assert!(result.success, "{:?}", result.error);
+    }
+
+    let columns = schema_service::get_table_columns(&driver, "public", "ddl_create_test")
+        .await
+        .expect("get_table_columns failed");
+    assert!(columns.iter().any(|c| c.name == "id"));
+    assert!(columns.iter().any(|c| c.name == "email"));
+
+    let constraints = schema_service::list_constraints(&driver, "public", "ddl_create_test")
+        .await
+        .expect("list_constraints failed");
+    assert!(constraints.iter().any(|c| c.name == "ddl_create_test_pkey"));
+
+    let indexes = schema_service::list_indexes(&driver, "public", "ddl_create_test")
+        .await
+        .expect("list_indexes failed");
+    assert!(indexes.iter().any(|i| i.name == "ddl_create_test_email_idx"));
+
+    raw_exec(&driver, "drop table ddl_create_test;").await;
+}
+
+#[tokio::test]
+async fn execute_ddl_rename_table() {
+    let driver = dev_driver().await;
+    raw_exec(&driver, "drop table if exists ddl_rename_test;").await;
+    raw_exec(&driver, "drop table if exists ddl_rename_test_2;").await;
+    raw_exec(&driver, "create table ddl_rename_test (id serial primary key);").await;
+
+    let statements = vec![DdlStatement::RenameTable {
+        table: "ddl_rename_test".to_string(),
+        new_name: "ddl_rename_test_2".to_string(),
+    }];
+    let batch = schema_service::execute_ddl(&driver, "public", &statements)
+        .await
+        .expect("rename table execute_ddl failed");
+    assert!(batch.results[0].success, "{:?}", batch.results[0].error);
+
+    let tables = schema_service::list_tables(&driver).await.expect("list_tables failed");
+    assert!(!tables.iter().any(|t| t.name == "ddl_rename_test"));
+    assert!(tables.iter().any(|t| t.name == "ddl_rename_test_2"));
+
+    raw_exec(&driver, "drop table ddl_rename_test_2;").await;
+}
+
+#[tokio::test]
+async fn execute_ddl_drop_table() {
+    let driver = dev_driver().await;
+    raw_exec(&driver, "drop table if exists ddl_drop_test;").await;
+    raw_exec(&driver, "create table ddl_drop_test (id serial primary key);").await;
+
+    let statements = vec![DdlStatement::DropTable { table: "ddl_drop_test".to_string() }];
+    let batch = schema_service::execute_ddl(&driver, "public", &statements)
+        .await
+        .expect("drop table execute_ddl failed");
+    assert!(batch.results[0].success, "{:?}", batch.results[0].error);
+
+    let tables = schema_service::list_tables(&driver).await.expect("list_tables failed");
+    assert!(!tables.iter().any(|t| t.name == "ddl_drop_test"));
+}
+
+#[test]
+fn rename_table_deserializes_camel_case_new_name() {
+    let json = r#"{"op":"renameTable","table":"t","newName":"n2"}"#;
+    let statement: DdlStatement = serde_json::from_str(json).expect("should deserialize camelCase newName");
+    match statement {
+        DdlStatement::RenameTable { table, new_name } => {
+            assert_eq!(table, "t");
+            assert_eq!(new_name, "n2");
+        }
+        _ => panic!("wrong variant"),
+    }
+}

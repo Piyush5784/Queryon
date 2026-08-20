@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Check, Copy, Loader2, RotateCcw } from "lucide-react";
+import { AlertTriangle, Check, Copy, Loader2, Plus, RotateCcw } from "lucide-react";
 
 import { Button } from "@/src/app/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/app/components/ui/tabs";
@@ -7,6 +7,7 @@ import { ColumnsTab, editRowFor, newColumnRow } from "@/src/features/schema/comp
 import { ConstraintsTab, newConstraintRow } from "@/src/features/schema/components/ConstraintsTab";
 import { DdlPreviewDialog } from "@/src/features/schema/components/DdlPreviewDialog";
 import { IndexesTab, newIndexRow } from "@/src/features/schema/components/IndexesTab";
+import { NewTableCreateView } from "@/src/features/schema/components/NewTableCreateView";
 import {
   listConstraints,
   listIndexes,
@@ -41,6 +42,7 @@ export function TableStructureView({ connectionId, schema, table }: TableStructu
   const [error, setError] = useState<string | null>(null);
 
   const [changes, setChanges] = useState<SchemaChanges>(emptyChanges());
+  const [creatingTable, setCreatingTable] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [sqlPreview, setSqlPreview] = useState<DdlPreview[] | null>(null);
   const [sqlLoading, setSqlLoading] = useState(false);
@@ -208,6 +210,20 @@ export function TableStructureView({ connectionId, schema, table }: TableStructu
 
   if (!columns || !constraints || !indexes) return null;
 
+  if (creatingTable) {
+    return (
+      <NewTableCreateView
+        connectionId={connectionId}
+        schema={schema}
+        onCancel={() => setCreatingTable(false)}
+        onCreated={() => {
+          setCreatingTable(false);
+          load();
+        }}
+      />
+    );
+  }
+
   const columnNames = columns.map((c) => c.name);
 
   return (
@@ -221,20 +237,27 @@ export function TableStructureView({ connectionId, schema, table }: TableStructu
               <TabsTrigger value="constraints">Constraints</TabsTrigger>
             </TabsList>
 
-            {pendingChanges && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  {changeCount(changes)} staged change{changeCount(changes) === 1 ? "" : "s"}
-                </span>
-                <Button variant="outline" size="xs" className="gap-1.5" onClick={discardAll}>
-                  <RotateCcw className="size-3" />
-                  Discard
-                </Button>
-                <Button size="xs" disabled={!changesValid} onClick={() => setPreviewOpen(true)}>
-                  Save
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="xs" className="gap-1.5" onClick={() => setCreatingTable(true)}>
+                <Plus className="size-3" />
+                New Table
+              </Button>
+
+              {pendingChanges && (
+                <>
+                  <span className="text-xs text-muted-foreground">
+                    {changeCount(changes)} staged change{changeCount(changes) === 1 ? "" : "s"}
+                  </span>
+                  <Button variant="outline" size="xs" className="gap-1.5" onClick={discardAll}>
+                    <RotateCcw className="size-3" />
+                    Discard
+                  </Button>
+                  <Button size="xs" disabled={!changesValid} onClick={() => setPreviewOpen(true)}>
+                    Save
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
           <TabsContent value="columns" className="mt-3">

@@ -31,6 +31,9 @@ import {
 } from "@/src/app/components/ui/sidebar";
 import { RenameConnectionDialog } from "@/src/features/connections/components/RenameConnectionDialog";
 import { toDisplayUrl, type SavedConnectionProfile } from "@/src/features/connections/types";
+import { CreateTableDialog } from "@/src/features/schema/components/CreateTableDialog";
+import { DropTableDialog } from "@/src/features/schema/components/DropTableDialog";
+import { RenameTableDialog } from "@/src/features/schema/components/RenameTableDialog";
 import { TableDdlDialog } from "@/src/features/schema/components/TableDdlDialog";
 import {
   clearQueryHistory,
@@ -102,6 +105,12 @@ export function ConnectionTreeItem({
       cancelled = true;
     };
   }, [expanded, isConnected, tables, connection.id]);
+
+  function refetchTables() {
+    listTables(connection.id)
+      .then((result) => setTables(result))
+      .catch((err) => setError(toErrorMessage(err)));
+  }
 
   const schemas = groupBySchema(tables ?? []);
 
@@ -196,6 +205,7 @@ export function ConnectionTreeItem({
               schema={schemaName}
               tables={schemaTables}
               onOpenTable={onOpenTable}
+              onTableChanged={refetchTables}
             />
           ))}
 
@@ -223,32 +233,62 @@ function SchemaGroup({
   schema,
   tables,
   onOpenTable,
+  onTableChanged,
 }: {
   connectionId: string;
   schema: string;
   tables: TableRef[];
   onOpenTable: (schema: string, table: string) => void;
+  onTableChanged: () => void;
 }) {
   const [open, setOpen] = useState(schema === "public");
+  const [createOpen, setCreateOpen] = useState(false);
 
   return (
     <>
       <SidebarMenuSubItem>
-        <button
-          type="button"
-          onClick={() => setOpen((prev) => !prev)}
-          className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent"
-        >
-          <ChevronRight
-            className={`size-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
-          />
-          {schema}
-        </button>
+        <div className="group/schema relative flex items-center">
+          <button
+            type="button"
+            onClick={() => setOpen((prev) => !prev)}
+            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent"
+          >
+            <ChevronRight
+              className={`size-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+            />
+            {schema}
+          </button>
+          <button
+            type="button"
+            title="New table"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCreateOpen(true);
+            }}
+            className="absolute right-1 flex size-5 items-center justify-center rounded-md opacity-0 hover:bg-sidebar-accent group-hover/schema:opacity-100"
+          >
+            <Plus className="size-3.5" />
+          </button>
+        </div>
       </SidebarMenuSubItem>
       {open &&
         tables.map((t) => (
-          <TableRow key={`${t.schema}.${t.name}`} connectionId={connectionId} table={t} onOpenTable={onOpenTable} />
+          <TableRow
+            key={`${t.schema}.${t.name}`}
+            connectionId={connectionId}
+            table={t}
+            onOpenTable={onOpenTable}
+            onTableChanged={onTableChanged}
+          />
         ))}
+
+      <CreateTableDialog
+        connectionId={connectionId}
+        schema={schema}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={onTableChanged}
+      />
     </>
   );
 }
@@ -257,12 +297,16 @@ function TableRow({
   connectionId,
   table,
   onOpenTable,
+  onTableChanged,
 }: {
   connectionId: string;
   table: TableRef;
   onOpenTable: (schema: string, table: string) => void;
+  onTableChanged: () => void;
 }) {
   const [ddlOpen, setDdlOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [dropOpen, setDropOpen] = useState(false);
 
   return (
     <SidebarMenuSubItem className="group/table relative">
@@ -289,6 +333,18 @@ function TableRow({
         />
         <DropdownMenuContent align="start" side="right">
           <DropdownMenuItem onClick={() => setDdlOpen(true)}>View DDL</DropdownMenuItem>
+          {table.kind === "table" && (
+            <>
+              <DropdownMenuItem onClick={() => setRenameOpen(true)}>
+                <Pencil className="size-3.5" />
+                Rename Table
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => setDropOpen(true)}>
+                <Trash2 className="size-3.5" />
+                Drop Table
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -298,6 +354,24 @@ function TableRow({
         table={table.name}
         open={ddlOpen}
         onOpenChange={setDdlOpen}
+      />
+
+      <RenameTableDialog
+        connectionId={connectionId}
+        schema={table.schema}
+        table={table.name}
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        onRenamed={onTableChanged}
+      />
+
+      <DropTableDialog
+        connectionId={connectionId}
+        schema={table.schema}
+        table={table.name}
+        open={dropOpen}
+        onOpenChange={setDropOpen}
+        onDropped={onTableChanged}
       />
     </SidebarMenuSubItem>
   );
