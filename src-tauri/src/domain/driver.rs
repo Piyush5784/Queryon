@@ -4,7 +4,7 @@ use serde_json::Value as JsonValue;
 
 use crate::domain::query::RawQueryResult;
 use crate::domain::schema::{ColumnInfo, TableRef};
-use crate::domain::table::TableRowsResult;
+use crate::domain::table::{TableFilter, TableRowsResult, TableSort};
 use crate::error::AppError;
 
 /// One implementation per supported database engine (Postgres, MySQL, ...).
@@ -25,7 +25,16 @@ pub trait DatabaseDriver: Send + Sync {
         table: &str,
         limit: i64,
         offset: i64,
+        filters: &[TableFilter],
+        sort: &[TableSort],
     ) -> Result<TableRowsResult, AppError>;
+
+    async fn count_table_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        filters: &[TableFilter],
+    ) -> Result<u64, AppError>;
 
     async fn update_json_cell(
         &self,
@@ -51,6 +60,13 @@ pub trait DatabaseDriver: Send + Sync {
         table: &str,
         rows: &[HashMap<String, JsonValue>],
     ) -> Result<u64, AppError>;
+
+    async fn insert_row(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &HashMap<String, JsonValue>,
+    ) -> Result<(), AppError>;
 
     async fn execute_query(&self, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError>;
 }

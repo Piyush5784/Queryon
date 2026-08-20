@@ -7,6 +7,7 @@ export {
   listSavedConnections,
   connectSaved,
   deleteSavedConnection,
+  renameSavedConnection,
   type ConnectionInfo,
   type SavedConnectionProfile,
 } from "@/src/lib/tauri/commands";

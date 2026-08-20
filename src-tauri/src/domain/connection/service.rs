@@ -65,3 +65,15 @@ pub fn delete_saved_connection(app: &AppHandle<Wry>, connection_id: &str) -> Res
     credential_vault::delete_password(connection_id)?;
     profile_store::remove(app, connection_id)
 }
+
+pub fn rename_saved_connection(
+    app: &AppHandle<Wry>,
+    connection_id: &str,
+    name: &str,
+) -> Result<(), AppError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::new("Connection name cannot be empty."));
+    }
+    profile_store::rename(app, connection_id, name)
+}

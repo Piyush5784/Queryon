@@ -4,7 +4,7 @@ use std::time::Instant;
 use serde_json::Value as JsonValue;
 use tauri::State;
 
-use crate::domain::table::{service, TableRowsResult};
+use crate::domain::table::{service, TableFilter, TableRowsResult, TableSort};
 use crate::error::AppError;
 use crate::state::ConnectionRegistry;
 
@@ -31,6 +31,8 @@ pub async fn db_fetch_table_rows(
     table: String,
     limit: i32,
     offset: i32,
+    filters: Vec<TableFilter>,
+    sort: Vec<TableSort>,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<TableRowsResult, AppError> {
     let driver = registry
@@ -38,11 +40,36 @@ pub async fn db_fetch_table_rows(
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
 
     let start = Instant::now();
-    let mut result =
-        service::fetch_table_rows(driver.as_ref(), &schema, &table, limit as i64, offset as i64).await?;
+    let mut result = service::fetch_table_rows(
+        driver.as_ref(),
+        &schema,
+        &table,
+        limit as i64,
+        offset as i64,
+        &filters,
+        &sort,
+    )
+    .await?;
     result.duration_ms = start.elapsed().as_millis() as u32;
 
     Ok(result)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn db_count_table_rows(
+    connection_id: String,
+    schema: String,
+    table: String,
+    filters: Vec<TableFilter>,
+    registry: State<'_, ConnectionRegistry>,
+) -> Result<u32, AppError> {
+    let driver = registry
+        .get(&connection_id)
+        .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
+
+    let count = service::count_table_rows(driver.as_ref(), &schema, &table, &filters).await?;
+    Ok(count.min(u32::MAX as u64) as u32)
 }
 
 #[tauri::command]
@@ -102,4 +129,21 @@ pub async fn db_delete_rows(
     let rows = rows.into_iter().map(decode_row).collect::<Result<Vec<_>, _>>()?;
     let affected = service::delete_rows(driver.as_ref(), &schema, &table, &rows).await?;
     Ok(affected as u32)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn db_insert_row(
+    connection_id: String,
+    schema: String,
+    table: String,
+    values: HashMap<String, String>,
+    registry: State<'_, ConnectionRegistry>,
+) -> Result<(), AppError> {
+    let driver = registry
+        .get(&connection_id)
+        .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
+
+    let values = decode_row(values)?;
+    service::insert_row(driver.as_ref(), &schema, &table, &values).await
 }

@@ -7,12 +7,12 @@ use sqlx::Row;
 use crate::domain::driver::DatabaseDriver;
 use crate::domain::query::RawQueryResult;
 use crate::domain::schema::{ColumnInfo, TableRef};
-use crate::domain::table::TableRowsResult;
+use crate::domain::table::{TableFilter, TableRowsResult, TableSort};
 use crate::error::AppError;
 
 use super::{executor, metadata};
 
-const MAX_PAGE_SIZE: i64 = 500;
+const MAX_PAGE_SIZE: i64 = 10_000;
 
 pub struct MySqlDriver {
     pool: MySqlPool,
@@ -22,6 +22,20 @@ pub struct MySqlDriver {
 impl MySqlDriver {
     pub fn new(pool: MySqlPool, database: String) -> Self {
         Self { pool, database }
+    }
+}
+
+/// Converts one insert-row value to its text representation. Returns
+/// `None` for `Null`, meaning the column is omitted from the insert
+/// entirely so its table default (or nullability) applies, rather than
+/// binding an explicit SQL `NULL` that would override a `DEFAULT`.
+fn json_to_insert_text(value: &JsonValue) -> Option<String> {
+    match value {
+        JsonValue::Null => None,
+        JsonValue::String(s) => Some(s.clone()),
+        JsonValue::Number(n) => Some(n.to_string()),
+        JsonValue::Bool(b) => Some(b.to_string()),
+        other => Some(other.to_string()),
     }
 }
 
@@ -90,14 +104,37 @@ impl DatabaseDriver for MySqlDriver {
         table: &str,
         limit: i64,
         offset: i64,
+        filters: &[TableFilter],
+        sort: &[TableSort],
     ) -> Result<TableRowsResult, AppError> {
         validate_identifier(schema)?;
         validate_identifier(table)?;
+        for filter in filters {
+            validate_identifier(&filter.column)?;
+        }
+        for sort in sort {
+            validate_identifier(&sort.column)?;
+        }
 
         let limit = limit.clamp(1, MAX_PAGE_SIZE);
         let offset = offset.max(0);
 
-        executor::fetch_rows(&self.pool, schema, table, limit, offset).await
+        executor::fetch_rows(&self.pool, schema, table, limit, offset, filters, sort).await
+    }
+
+    async fn count_table_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        filters: &[TableFilter],
+    ) -> Result<u64, AppError> {
+        validate_identifier(schema)?;
+        validate_identifier(table)?;
+        for filter in filters {
+            validate_identifier(&filter.column)?;
+        }
+
+        executor::count_rows(&self.pool, schema, table, filters).await
     }
 
     async fn update_json_cell(
@@ -161,6 +198,25 @@ impl DatabaseDriver for MySqlDriver {
         }
 
         executor::delete_rows(&self.pool, schema, table, &rows_pk_values).await
+    }
+
+    async fn insert_row(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &HashMap<String, JsonValue>,
+    ) -> Result<(), AppError> {
+        validate_identifier(schema)?;
+        validate_identifier(table)?;
+
+        let mut insert_values = Vec::with_capacity(values.len());
+        for (column, value) in values {
+            let Some(text) = json_to_insert_text(value) else { continue };
+            validate_identifier(column)?;
+            insert_values.push((column.clone(), text));
+        }
+
+        executor::insert_row(&self.pool, schema, table, &insert_values).await
     }
 
     async fn execute_query(&self, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {

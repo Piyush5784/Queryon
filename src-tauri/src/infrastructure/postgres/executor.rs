@@ -4,8 +4,106 @@ use tokio_postgres::types::{ToSql, Type as PgType};
 use tokio_postgres::Row;
 
 use crate::domain::query::{encode_cell, RawQueryResult};
-use crate::domain::table::TableRowsResult;
+use crate::domain::table::{FilterOperator, SortDirection, TableFilter, TableRowsResult, TableSort};
 use crate::error::{describe_pg_error, AppError};
+
+fn build_where_clause(
+    filters: &[TableFilter],
+    params: &mut Vec<Box<dyn ToSql + Sync + Send>>,
+) -> String {
+    if filters.is_empty() {
+        return String::new();
+    }
+
+    let clauses: Vec<String> = filters
+        .iter()
+        .map(|filter| {
+            let col = quote_ident(&filter.column);
+            match filter.operator {
+                FilterOperator::IsNull => format!("{col} is null"),
+                FilterOperator::IsNotNull => format!("{col} is not null"),
+                FilterOperator::Equals => {
+                    params.push(Box::new(filter.value.clone().unwrap_or_default()));
+                    format!("{col}::text = ${}", params.len())
+                }
+                FilterOperator::NotEquals => {
+                    params.push(Box::new(filter.value.clone().unwrap_or_default()));
+                    format!("{col}::text <> ${}", params.len())
+                }
+                FilterOperator::Like => {
+                    params.push(Box::new(filter.value.clone().unwrap_or_default()));
+                    format!("{col}::text like ${}", params.len())
+                }
+                FilterOperator::Ilike => {
+                    params.push(Box::new(filter.value.clone().unwrap_or_default()));
+                    format!("{col}::text ilike ${}", params.len())
+                }
+                FilterOperator::NotLike => {
+                    params.push(Box::new(filter.value.clone().unwrap_or_default()));
+                    format!("{col}::text not like ${}", params.len())
+                }
+                FilterOperator::GreaterThan => {
+                    params.push(Box::new(filter.value.clone().unwrap_or_default()));
+                    format!("{col}::text::numeric > ${}::numeric", params.len())
+                }
+                FilterOperator::GreaterOrEquals => {
+                    params.push(Box::new(filter.value.clone().unwrap_or_default()));
+                    format!("{col}::text::numeric >= ${}::numeric", params.len())
+                }
+                FilterOperator::LessThan => {
+                    params.push(Box::new(filter.value.clone().unwrap_or_default()));
+                    format!("{col}::text::numeric < ${}::numeric", params.len())
+                }
+                FilterOperator::LessOrEquals => {
+                    params.push(Box::new(filter.value.clone().unwrap_or_default()));
+                    format!("{col}::text::numeric <= ${}::numeric", params.len())
+                }
+                FilterOperator::In => {
+                    let values: Vec<String> = filter
+                        .value
+                        .as_deref()
+                        .unwrap_or("")
+                        .split(',')
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty())
+                        .collect();
+                    if values.is_empty() {
+                        return "false".to_string();
+                    }
+                    let placeholders: Vec<String> = values
+                        .into_iter()
+                        .map(|v| {
+                            params.push(Box::new(v));
+                            format!("${}", params.len())
+                        })
+                        .collect();
+                    format!("{col}::text in ({})", placeholders.join(", "))
+                }
+            }
+        })
+        .collect();
+
+    format!(" where {}", clauses.join(" and "))
+}
+
+fn build_order_by_clause(sort: &[TableSort]) -> String {
+    if sort.is_empty() {
+        return String::new();
+    }
+
+    let clauses: Vec<String> = sort
+        .iter()
+        .map(|s| {
+            let direction = match s.direction {
+                SortDirection::Asc => "asc",
+                SortDirection::Desc => "desc",
+            };
+            format!("{} {}", quote_ident(&s.column), direction)
+        })
+        .collect();
+
+    format!(" order by {}", clauses.join(", "))
+}
 
 pub async fn fetch_rows(
     client: &Client,
@@ -13,15 +111,32 @@ pub async fn fetch_rows(
     table: &str,
     limit: i64,
     offset: i64,
+    filters: &[TableFilter],
+    sort: &[TableSort],
 ) -> Result<TableRowsResult, AppError> {
+    let mut params: Vec<Box<dyn ToSql + Sync + Send>> = Vec::new();
+    let where_clause = build_where_clause(filters, &mut params);
+    let order_by_clause = build_order_by_clause(sort);
+
+    params.push(Box::new(limit));
+    let limit_idx = params.len();
+    params.push(Box::new(offset));
+    let offset_idx = params.len();
+
     let sql = format!(
-        "select * from {}.{} limit $1 offset $2",
+        "select * from {}.{}{}{} limit ${} offset ${}",
         quote_ident(schema),
-        quote_ident(table)
+        quote_ident(table),
+        where_clause,
+        order_by_clause,
+        limit_idx,
+        offset_idx
     );
 
+    let param_refs: Vec<&(dyn ToSql + Sync)> = params.iter().map(|p| p.as_ref() as &(dyn ToSql + Sync)).collect();
+
     let rows = client
-        .query(&sql, &[&limit, &offset])
+        .query(&sql, &param_refs)
         .await
         .map_err(|e| AppError::new(format!("Failed to fetch rows: {}", describe_pg_error(&e))))?;
 
@@ -62,6 +177,33 @@ pub async fn fetch_rows(
         // driver-lookup + fetch round trip; see commands/table.rs.
         duration_ms: 0,
     })
+}
+
+pub async fn count_rows(
+    client: &Client,
+    schema: &str,
+    table: &str,
+    filters: &[TableFilter],
+) -> Result<u64, AppError> {
+    let mut params: Vec<Box<dyn ToSql + Sync + Send>> = Vec::new();
+    let where_clause = build_where_clause(filters, &mut params);
+
+    let sql = format!(
+        "select count(*) from {}.{}{}",
+        quote_ident(schema),
+        quote_ident(table),
+        where_clause
+    );
+
+    let param_refs: Vec<&(dyn ToSql + Sync)> = params.iter().map(|p| p.as_ref() as &(dyn ToSql + Sync)).collect();
+
+    let row = client
+        .query_one(&sql, &param_refs)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to count rows: {}", describe_pg_error(&e))))?;
+
+    let count: i64 = row.get(0);
+    Ok(count as u64)
 }
 
 pub async fn execute_query(client: &Client, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {
@@ -147,6 +289,44 @@ pub async fn update_cell_text(
     );
 
     execute_single_row_update(client, &sql, &params, "update cell").await
+}
+
+pub async fn insert_row(
+    client: &Client,
+    schema: &str,
+    table: &str,
+    values: &[(String, String, String)],
+) -> Result<(), AppError> {
+    if values.is_empty() {
+        return Err(AppError::new("Cannot insert a row with no columns."));
+    }
+
+    let mut params: Vec<Box<dyn ToSql + Sync + Send>> = Vec::with_capacity(values.len());
+    let mut column_names = Vec::with_capacity(values.len());
+    let mut placeholders = Vec::with_capacity(values.len());
+
+    for (column, value, column_type) in values {
+        params.push(Box::new(value.clone()));
+        column_names.push(quote_ident(column));
+        placeholders.push(format!("${}::text::{}", params.len(), quote_pg_type(column_type)));
+    }
+
+    let sql = format!(
+        "insert into {}.{} ({}) values ({})",
+        quote_ident(schema),
+        quote_ident(table),
+        column_names.join(", "),
+        placeholders.join(", ")
+    );
+
+    let param_refs: Vec<&(dyn ToSql + Sync)> = params.iter().map(|p| p.as_ref() as &(dyn ToSql + Sync)).collect();
+
+    client
+        .execute(&sql, &param_refs)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to insert row: {}", describe_pg_error(&e))))?;
+
+    Ok(())
 }
 
 pub async fn delete_rows(
@@ -249,11 +429,6 @@ async fn execute_single_row_update(
     Ok(())
 }
 
-/// Only allows identifier-shaped Postgres type names (covers every builtin
-/// scalar type: text, integer, boolean, numeric, timestamptz, uuid, etc.)
-/// so `column_type` — sourced from information_schema, not raw user input —
-/// can never be used to break out of the generated SQL even if that
-/// assumption were ever violated.
 fn quote_pg_type(type_name: &str) -> &str {
     let is_safe = !type_name.is_empty()
         && type_name
@@ -266,9 +441,6 @@ fn quote_pg_type(type_name: &str) -> &str {
     }
 }
 
-/// Converts a JSON primary-key value into its text representation, since
-/// `update_cell`'s WHERE clause always compares as `col::text = $n::text`
-/// (works uniformly across bigint/uuid/text PKs without per-type binding).
 fn json_pk_to_text_param(value: &JsonValue) -> Box<dyn ToSql + Sync + Send> {
     let text = match value {
         JsonValue::String(s) => s.clone(),
@@ -452,7 +624,6 @@ mod tests {
 
     #[test]
     fn decodes_positive_integer() {
-        // 123 => one base-10000 digit group [123], weight 0, no scale
         let raw = build_numeric_wire(&[123], 0, 0x0000, 0);
         assert_eq!(decode(&raw), "123");
     }
@@ -465,7 +636,6 @@ mod tests {
 
     #[test]
     fn decodes_decimal_value() {
-        // 123.45 => digit groups [123, 4500], weight 0, dscale 2
         let raw = build_numeric_wire(&[123, 4500], 0, 0x0000, 2);
         assert_eq!(decode(&raw), "123.45");
     }
@@ -478,7 +648,6 @@ mod tests {
 
     #[test]
     fn decodes_small_fraction_with_leading_zero() {
-        // 0.05 => digit group [500] at weight -1, dscale 2
         let raw = build_numeric_wire(&[500], -1, 0x0000, 2);
         assert_eq!(decode(&raw), "0.05");
     }

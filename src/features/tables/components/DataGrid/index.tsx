@@ -14,11 +14,11 @@ import DataEditor, {
 
 import type { CellValue } from "@/src/features/tables/api";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
+import { HeaderSortMenu } from "@/src/features/tables/components/DataGrid/HeaderSortMenu";
 import { RowContextMenu } from "@/src/features/tables/components/DataGrid/RowContextMenu";
 
 export type JsonCellMode = "view" | "edit";
 
-/** Pending, unsaved edits for a single row, keyed by column name. */
 export interface RowEdit {
   rowIndex: number;
   row: CellValue[];
@@ -35,7 +35,6 @@ interface DataGridProps {
     mode: JsonCellMode
   ) => void;
   editable?: boolean;
-  /** Row currently unlocked for whole-row inline editing (via "Edit Row"). */
   editingRowIndex?: number | null;
   pendingEdit: RowEdit | null;
   onPendingEditChange: (edit: RowEdit | null) => void;
@@ -44,6 +43,10 @@ interface DataGridProps {
   selectedRowIndices?: Set<number>;
   onSelectionChange?: (indices: Set<number>) => void;
   onDeleteRow?: (rowIndex: number) => void;
+  sortColumn?: string | null;
+  sortDirection?: "asc" | "desc" | null;
+  onSortChange?: (column: string, direction: "asc" | "desc") => void;
+  hiddenColumns?: Set<string>;
 }
 
 const ROW_HEIGHT = 32;
@@ -163,11 +166,26 @@ export function DataGrid({
   selectedRowIndices,
   onSelectionChange,
   onDeleteRow,
+  sortColumn = null,
+  sortDirection = null,
+  onSortChange,
+  hiddenColumns,
 }: DataGridProps) {
   const theme = useGlideTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const [columnWidths, setColumnWidths] = useState<Map<string, number>>(new Map());
   const [contextMenu, setContextMenu] = useState<{ rowIndex: number; x: number; y: number } | null>(null);
+  const [sortMenu, setSortMenu] = useState<{ column: string; x: number; y: number } | null>(null);
+
+  /** Real indices into `columns`/`rows[i]` for every visible (non-hidden) column, in display order. */
+  const visibleColumnIndices = useMemo(() => {
+    if (!hiddenColumns || hiddenColumns.size === 0) return columns.map((_, index) => index);
+    return columns.reduce<number[]>((acc, name, index) => {
+      if (!hiddenColumns.has(name)) acc.push(index);
+      return acc;
+    }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns, hiddenColumns]);
 
   const gridColumns: GridColumn[] = useMemo(() => {
     const menuColumn: GridColumn = {
@@ -177,15 +195,19 @@ export function DataGrid({
       hasMenu: false,
       themeOverride: { bgCell: theme.bgHeader },
     };
-    const dataColumns = columns.map((name, index) => ({
-      id: name,
-      title: name,
-      width: columnWidths.get(name) ?? estimateColumnWidth(name, rows.slice(0, 30), index),
-      hasMenu: false,
-    }));
+    const dataColumns = visibleColumnIndices.map((realIndex) => {
+      const name = columns[realIndex];
+      const arrow = sortColumn === name ? (sortDirection === "asc" ? " ▲" : sortDirection === "desc" ? " ▼" : "") : "";
+      return {
+        id: name,
+        title: name + arrow,
+        width: columnWidths.get(name) ?? estimateColumnWidth(name, rows.slice(0, 30), realIndex),
+        hasMenu: !!onSortChange,
+      };
+    });
     return [menuColumn, ...dataColumns];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, columnWidths, theme.bgHeader]);
+  }, [columns, columnWidths, theme.bgHeader, sortColumn, sortDirection, visibleColumnIndices, onSortChange]);
 
   function rowValue(rowIndex: number, columnIndex: number): CellValue {
     const columnName = columns[columnIndex];
@@ -208,7 +230,7 @@ export function DataGrid({
         };
       }
 
-      const col = gridCol - 1;
+      const col = visibleColumnIndices[gridCol - 1];
       const value = rowValue(row, col);
       const columnName = columns[col];
       const isJson = value !== null && value !== undefined && typeof value === "object";
@@ -252,13 +274,13 @@ export function DataGrid({
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [rows, columns, pendingEdit, editingRowIndex, editable, saving, theme]
+    [rows, columns, pendingEdit, editingRowIndex, editable, saving, theme, visibleColumnIndices]
   );
 
   function handleCellEdited([gridCol, row]: Item, newCell: EditableGridCell) {
     if (gridCol === 0 || newCell.kind !== GridCellKind.Text) return;
 
-    const col = gridCol - 1;
+    const col = visibleColumnIndices[gridCol - 1];
     const columnName = columns[col];
     const originalValue = rows[row]?.[col];
     const newValue = newCell.data === "" ? null : newCell.data;
@@ -299,11 +321,11 @@ export function DataGrid({
       return;
     }
 
-    const col = gridCol - 1;
+    const col = visibleColumnIndices[gridCol - 1];
     const value = rows[row]?.[col];
     if (value === null || value === undefined || typeof value !== "object") {
       lastClick.current = null;
-      return; 
+      return;
     }
 
     const now = Date.now();
@@ -315,6 +337,36 @@ export function DataGrid({
 
     lastClick.current = isDoubleClick ? null : { col, row, time: now };
     onOpenJsonCell?.(columns[col], value as JsonValue, rows[row], isDoubleClick ? "edit" : "view");
+  }
+
+  function headerColumnName(gridCol: number): string | null {
+    if (gridCol === 0) return null;
+    const col = visibleColumnIndices[gridCol - 1];
+    return columns[col] ?? null;
+  }
+
+  function handleHeaderClicked(gridCol: number, event: { bounds: { x: number; y: number; width: number; height: number } }) {
+    if (!onSortChange) return;
+    const columnName = headerColumnName(gridCol);
+    if (!columnName) return;
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+    setSortMenu({
+      column: columnName,
+      x:   event.bounds.x,
+      y:  event.bounds.y + event.bounds.height,
+    });
+  }
+
+  function handleHeaderMenuClick(gridCol: number, screenPosition: { x: number; y: number; width: number; height: number }) {
+    if (!onSortChange) return;
+    const columnName = headerColumnName(gridCol);
+    if (!columnName) return;
+    setSortMenu({
+      column: columnName,
+      x: screenPosition.x,
+      y: screenPosition.y + screenPosition.height,
+    });
   }
 
   function handleCellContextMenu([, row]: Item, event: CellClickedEventArgs) {
@@ -377,6 +429,8 @@ export function DataGrid({
         onCellEdited={editable ? handleCellEdited : undefined}
         onCellClicked={handleCellClicked}
         onCellContextMenu={handleCellContextMenu}
+        onHeaderClicked={handleHeaderClicked}
+        onHeaderMenuClick={handleHeaderMenuClick}
         onColumnResize={handleColumnResize}
         rowHeight={ROW_HEIGHT}
         headerHeight={ROW_HEIGHT}
@@ -412,6 +466,22 @@ export function DataGrid({
                 }
               : undefined
           }
+        />
+      )}
+
+      {sortMenu && onSortChange && (
+        <HeaderSortMenu
+          x={sortMenu.x}
+          y={sortMenu.y}
+          onClose={() => setSortMenu(null)}
+          onSortAsc={() => {
+            onSortChange(sortMenu.column, "asc");
+            setSortMenu(null);
+          }}
+          onSortDesc={() => {
+            onSortChange(sortMenu.column, "desc");
+            setSortMenu(null);
+          }}
         />
       )}
     </div>

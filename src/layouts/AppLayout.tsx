@@ -29,6 +29,7 @@ interface AppLayoutProps {
   onNewQuery: (connectionId?: string) => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (connectionId: string, sql: string) => void;
+  onConnectionRenamed: () => void;
   showHome: boolean;
   onGoHome: () => void;
   tabs: AppTab[];
@@ -53,6 +54,7 @@ export function AppLayout({
   onNewQuery,
   onOpenSavedQuery,
   onOpenHistoryEntry,
+  onConnectionRenamed,
   showHome,
   onGoHome,
   tabs,
@@ -76,6 +78,7 @@ export function AppLayout({
           onOpenSavedQuery={onOpenSavedQuery}
           onOpenHistoryEntry={onOpenHistoryEntry}
           onNewQuery={onNewQuery}
+          onConnectionRenamed={onConnectionRenamed}
         />
         <SidebarInset className="min-h-0">
           <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b px-2">

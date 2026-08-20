@@ -7,12 +7,12 @@ use serde_json::Value as JsonValue;
 use crate::domain::driver::DatabaseDriver;
 use crate::domain::query::RawQueryResult;
 use crate::domain::schema::{ColumnInfo, TableRef};
-use crate::domain::table::TableRowsResult;
+use crate::domain::table::{TableFilter, TableRowsResult, TableSort};
 use crate::error::AppError;
 
 use super::{executor, metadata};
 
-const MAX_PAGE_SIZE: i64 = 500;
+const MAX_PAGE_SIZE: i64 = 10_000;
 
 pub struct PostgresDriver {
     pool: Pool,
@@ -21,6 +21,16 @@ pub struct PostgresDriver {
 impl PostgresDriver {
     pub fn new(pool: Pool) -> Self {
         Self { pool }
+    }
+}
+
+fn json_to_insert_text(value: &JsonValue) -> Option<String> {
+    match value {
+        JsonValue::Null => None,
+        JsonValue::String(s) => Some(s.clone()),
+        JsonValue::Number(n) => Some(n.to_string()),
+        JsonValue::Bool(b) => Some(b.to_string()),
+        other => Some(other.to_string()),
     }
 }
 
@@ -123,9 +133,17 @@ impl DatabaseDriver for PostgresDriver {
         table: &str,
         limit: i64,
         offset: i64,
+        filters: &[TableFilter],
+        sort: &[TableSort],
     ) -> Result<TableRowsResult, AppError> {
         validate_identifier(schema)?;
         validate_identifier(table)?;
+        for filter in filters {
+            validate_identifier(&filter.column)?;
+        }
+        for sort in sort {
+            validate_identifier(&sort.column)?;
+        }
 
         let limit = limit.clamp(1, MAX_PAGE_SIZE);
         let offset = offset.max(0);
@@ -136,7 +154,28 @@ impl DatabaseDriver for PostgresDriver {
             .await
             .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
 
-        executor::fetch_rows(&client, schema, table, limit, offset).await
+        executor::fetch_rows(&client, schema, table, limit, offset, filters, sort).await
+    }
+
+    async fn count_table_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        filters: &[TableFilter],
+    ) -> Result<u64, AppError> {
+        validate_identifier(schema)?;
+        validate_identifier(table)?;
+        for filter in filters {
+            validate_identifier(&filter.column)?;
+        }
+
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
+
+        executor::count_rows(&client, schema, table, filters).await
     }
 
     async fn update_json_cell(
@@ -228,6 +267,38 @@ impl DatabaseDriver for PostgresDriver {
         }
 
         executor::delete_rows(&client, schema, table, &rows_pk_values).await
+    }
+
+    async fn insert_row(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &HashMap<String, JsonValue>,
+    ) -> Result<(), AppError> {
+        validate_identifier(schema)?;
+        validate_identifier(table)?;
+
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
+
+        let columns = metadata::get_table_columns(&client, schema, table).await?;
+
+        let mut insert_values = Vec::with_capacity(values.len());
+        for (column, value) in values {
+            let Some(text) = json_to_insert_text(value) else { continue };
+            validate_identifier(column)?;
+            let column_type = columns
+                .iter()
+                .find(|c| &c.name == column)
+                .map(|c| c.data_type.clone())
+                .ok_or_else(|| AppError::new(format!("Unknown column '{column}'.")))?;
+            insert_values.push((column.clone(), text, column_type));
+        }
+
+        executor::insert_row(&client, schema, table, &insert_values).await
     }
 
     async fn execute_query(&self, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {

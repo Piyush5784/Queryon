@@ -12,12 +12,15 @@ export const commands = {
 	dbListSavedConnections: () => typedError<SavedConnectionProfile[], AppError>(__TAURI_INVOKE("db_list_saved_connections")),
 	dbConnectSaved: (connectionId: string) => typedError<ConnectionInfo, AppError>(__TAURI_INVOKE("db_connect_saved", { connectionId })),
 	dbDeleteSavedConnection: (connectionId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_delete_saved_connection", { connectionId })),
+	dbRenameSavedConnection: (connectionId: string, name: string) => typedError<null, AppError>(__TAURI_INVOKE("db_rename_saved_connection", { connectionId, name })),
 	dbListTables: (connectionId: string) => typedError<TableRef[], AppError>(__TAURI_INVOKE("db_list_tables", { connectionId })),
 	dbGetTableColumns: (connectionId: string, schema: string, table: string) => typedError<ColumnInfo[], AppError>(__TAURI_INVOKE("db_get_table_columns", { connectionId, schema, table })),
-	dbFetchTableRows: (connectionId: string, schema: string, table: string, limit: number, offset: number) => typedError<TableRowsResult, AppError>(__TAURI_INVOKE("db_fetch_table_rows", { connectionId, schema, table, limit, offset })),
+	dbFetchTableRows: (connectionId: string, schema: string, table: string, limit: number, offset: number, filters: TableFilter[], sort: TableSort[]) => typedError<TableRowsResult, AppError>(__TAURI_INVOKE("db_fetch_table_rows", { connectionId, schema, table, limit, offset, filters, sort })),
+	dbCountTableRows: (connectionId: string, schema: string, table: string, filters: TableFilter[]) => typedError<number, AppError>(__TAURI_INVOKE("db_count_table_rows", { connectionId, schema, table, filters })),
 	dbUpdateJsonCell: (connectionId: string, schema: string, table: string, row: { [key in string]: string }, column: string, value: string) => typedError<null, AppError>(__TAURI_INVOKE("db_update_json_cell", { connectionId, schema, table, row, column, value })),
 	dbUpdateCellText: (connectionId: string, schema: string, table: string, row: { [key in string]: string }, column: string, value: string | null) => typedError<null, AppError>(__TAURI_INVOKE("db_update_cell_text", { connectionId, schema, table, row, column, value })),
 	dbDeleteRows: (connectionId: string, schema: string, table: string, rows: { [key in string]: string }[]) => typedError<number, AppError>(__TAURI_INVOKE("db_delete_rows", { connectionId, schema, table, rows })),
+	dbInsertRow: (connectionId: string, schema: string, table: string, values: { [key in string]: string }) => typedError<null, AppError>(__TAURI_INVOKE("db_insert_row", { connectionId, schema, table, values })),
 	dbExecuteQuery: (connectionId: string, sql: string) => typedError<QueryResult, AppError>(__TAURI_INVOKE("db_execute_query", { connectionId, sql })),
 	dbSaveQuery: (query: SavedQuery) => typedError<null, AppError>(__TAURI_INVOKE("db_save_query", { query })),
 	dbListSavedQueries: (connectionId: string) => typedError<SavedQuery[], AppError>(__TAURI_INVOKE("db_list_saved_queries", { connectionId })),
@@ -89,6 +92,17 @@ export type Engine = "postgres" | "neon" | "my-sql";
 
 export type ExportFormat = "csv" | "json" | "sql";
 
+export type FilterOperator = "equals" | "not-equals" | "greater-than" | "greater-or-equals" | "less-than" | "less-or-equals" | 
+/**  Raw SQL `LIKE` pattern — the caller supplies its own `%`/`_` wildcards. */
+"like" | 
+/**
+ *  Raw SQL case-insensitive `ILIKE` pattern (Postgres) / `LIKE` on a
+ *  case-insensitive collation (MySQL) — same wildcard convention as `Like`.
+ */
+"ilike" | "not-like" | 
+/**  `value` is a comma-separated list; matches if the column equals any of them. */
+"in" | "is-null" | "is-not-null";
+
 export type QueryHistoryEntry = {
 	id: string,
 	connectionId: string,
@@ -144,6 +158,8 @@ export type SavedQuery = {
 	updatedAt: string,
 };
 
+export type SortDirection = "asc" | "desc";
+
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
 export type TableExportRequest = {
@@ -156,6 +172,16 @@ export type TableExportRequest = {
 	prettyPrint: boolean,
 	chunkSize: number,
 	deleteOnAbort: boolean,
+};
+
+/**
+ *  A single column filter applied as a WHERE clause in `fetch_table_rows`.
+ *  `value` is ignored for `IsNull`/`IsNotNull`.
+ */
+export type TableFilter = {
+	column: string,
+	operator: FilterOperator,
+	value: string | null,
 };
 
 export type TableRef = {
@@ -180,6 +206,16 @@ export type TableRowsResult = {
 	rowCount: number,
 	hasMore: boolean,
 	durationMs: number,
+};
+
+/**
+ *  One column/direction pair in the ordered list `fetch_table_rows`
+ *  results are sorted by (applied left to right, like a SQL multi-column
+ *  `ORDER BY`).
+ */
+export type TableSort = {
+	column: string,
+	direction: SortDirection,
 };
 
 /* Tauri Specta runtime */

@@ -86,7 +86,7 @@ async fn get_table_columns_unknown_table_returns_empty() {
 async fn fetch_table_rows_respects_limit() {
     let pool = dev_pool().await;
     let driver = PostgresDriver::new(pool.clone());
-    let result = table_service::fetch_table_rows(&driver, "public", "users", 2, 0)
+    let result = table_service::fetch_table_rows(&driver, "public", "users", 2, 0, &[], &[])
         .await
         .expect("fetch_table_rows failed");
 
@@ -100,10 +100,10 @@ async fn fetch_table_rows_paginates_without_overlap() {
     let pool = dev_pool().await;
     let driver = PostgresDriver::new(pool.clone());
 
-    let page1 = table_service::fetch_table_rows(&driver, "public", "users", 2, 0)
+    let page1 = table_service::fetch_table_rows(&driver, "public", "users", 2, 0, &[], &[])
         .await
         .expect("page 1 fetch failed");
-    let page2 = table_service::fetch_table_rows(&driver, "public", "users", 2, 2)
+    let page2 = table_service::fetch_table_rows(&driver, "public", "users", 2, 2, &[], &[])
         .await
         .expect("page 2 fetch failed");
 
@@ -125,9 +125,9 @@ async fn fetch_table_rows_paginates_without_overlap() {
 async fn fetch_table_rows_clamps_oversized_limit() {
     let pool = dev_pool().await;
     let driver = PostgresDriver::new(pool.clone());
-    // MAX_PAGE_SIZE is 500; requesting far more should not error or hang,
-    // and should not return more rows than actually exist.
-    let result = table_service::fetch_table_rows(&driver, "public", "users", 100_000, 0)
+    // MAX_PAGE_SIZE is 10,000; requesting far more should not error or
+    // hang, and should not return more rows than actually exist.
+    let result = table_service::fetch_table_rows(&driver, "public", "users", 100_000, 0, &[], &[])
         .await
         .expect("fetch_table_rows failed");
     assert!(result.row_count < 1000);
@@ -137,7 +137,7 @@ async fn fetch_table_rows_clamps_oversized_limit() {
 async fn fetch_table_rows_rejects_invalid_identifier() {
     let pool = dev_pool().await;
     let driver = PostgresDriver::new(pool.clone());
-    let result = table_service::fetch_table_rows(&driver, "public", "users; drop table users;--", 10, 0).await;
+    let result = table_service::fetch_table_rows(&driver, "public", "users; drop table users;--", 10, 0, &[], &[]).await;
     assert!(result.is_err(), "malicious identifier should be rejected, not executed");
 }
 
@@ -160,7 +160,7 @@ async fn update_json_cell_writes_and_is_readable_back() {
     .await
     .expect("update_cell failed");
 
-    let result = table_service::fetch_table_rows(&driver, "public", "users", 10, 0)
+    let result = table_service::fetch_table_rows(&driver, "public", "users", 10, 0, &[], &[])
         .await
         .expect("fetch after update failed");
 
@@ -230,7 +230,7 @@ async fn update_cell_text_writes_a_text_column() {
         .await
         .expect("update_cell_text failed");
 
-    let result = table_service::fetch_table_rows(&driver, "public", "users", 10, 0)
+    let result = table_service::fetch_table_rows(&driver, "public", "users", 10, 0, &[], &[])
         .await
         .expect("fetch after update failed");
 
@@ -261,7 +261,7 @@ async fn update_cell_text_writes_a_boolean_column() {
         .await
         .expect("update_cell_text failed");
 
-    let result = table_service::fetch_table_rows(&driver, "public", "users", 10, 0)
+    let result = table_service::fetch_table_rows(&driver, "public", "users", 10, 0, &[], &[])
         .await
         .expect("fetch after update failed");
 
@@ -292,7 +292,7 @@ async fn update_cell_text_sets_null() {
         .await
         .expect("update_cell_text with null failed");
 
-    let result = table_service::fetch_table_rows(&driver, "public", "orders", 10, 0)
+    let result = table_service::fetch_table_rows(&driver, "public", "orders", 10, 0, &[], &[])
         .await
         .expect("fetch after update failed");
 
@@ -362,7 +362,7 @@ async fn delete_rows_removes_a_single_row() {
         .expect("delete_rows failed");
     assert_eq!(affected, 1);
 
-    let result = table_service::fetch_table_rows(&driver, "public", "categories", 500, 0)
+    let result = table_service::fetch_table_rows(&driver, "public", "categories", 500, 0, &[], &[])
         .await
         .unwrap();
     let id_index = result.columns.iter().position(|c| c == "id").unwrap();
@@ -389,7 +389,7 @@ async fn delete_rows_removes_multiple_rows_at_once() {
         .expect("delete_rows failed");
     assert_eq!(affected, 2);
 
-    let result = table_service::fetch_table_rows(&driver, "public", "categories", 500, 0)
+    let result = table_service::fetch_table_rows(&driver, "public", "categories", 500, 0, &[], &[])
         .await
         .unwrap();
     let id_index = result.columns.iter().position(|c| c == "id").unwrap();

@@ -93,7 +93,7 @@ pub async fn run_table_export(
         }
 
         let page = match driver
-            .fetch_table_rows(&request.schema, &request.table, chunk_size, offset)
+            .fetch_table_rows(&request.schema, &request.table, chunk_size, offset, &[], &[])
             .await
         {
             Ok(p) => p,

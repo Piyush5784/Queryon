@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Plus,
   RefreshCw,
   Trash2,
   X,
@@ -23,24 +24,25 @@ import {
   AlertDialogTitle,
 } from "@/src/app/components/ui/alert-dialog";
 import { Button } from "@/src/app/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/src/app/components/ui/select";
+import { Input } from "@/src/app/components/ui/input";
 import { CopyButton } from "@/src/components/CopyButton";
 import { ExportButton } from "@/src/components/ExportButton";
 import { DataGrid, type JsonCellMode, type RowEdit } from "@/src/features/tables/components/DataGrid";
 import { JsonInspectorSheet } from "@/src/features/tables/components/JsonViewer/JsonInspectorSheet";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
+import { TableFilterBar } from "@/src/features/tables/components/TableFilterBar";
+import { TableSortBar } from "@/src/features/tables/components/TableSortBar";
+import { TableToolbar } from "@/src/features/tables/components/TableToolbar";
 import {
+  countTableRows,
   deleteRows,
   fetchTableRows,
+  insertRow,
   updateCellText,
   type CellValue,
+  type TableFilter,
   type TableRowsResult,
+  type TableSort,
 } from "@/src/features/tables/api";
 import type { TableTab } from "@/src/features/tables/types";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
@@ -59,12 +61,13 @@ interface JsonSheetState {
   mode: JsonCellMode;
 }
 
-const PAGE_SIZE_OPTIONS = [50, 100, 200, 500];
 const DEFAULT_PAGE_SIZE = 200;
+const MAX_PAGE_SIZE = 10000;
 
 export function TableView({ tab }: TableViewProps) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageSizeInput, setPageSizeInput] = useState(String(DEFAULT_PAGE_SIZE));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TableRowsResult | null>(null);
@@ -77,9 +80,22 @@ export function TableView({ tab }: TableViewProps) {
   const [rowsPendingDelete, setRowsPendingDelete] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<TableFilter[]>([]);
+  const [sort, setSort] = useState<TableSort[]>([]);
+  const [isInsertingRow, setIsInsertingRow] = useState(false);
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  const [showFilters, setShowFilters] = useState(false);
+  const [showSort, setShowSort] = useState(false);
+  const [totalRowCount, setTotalRowCount] = useState<number | null>(null);
 
   useEffect(() => {
     setPage(0);
+    setFilters([]);
+    setSort([]);
+    setHiddenColumns(new Set());
+    setShowFilters(false);
+    setShowSort(false);
+    setTotalRowCount(null);
     resetPendingState();
   }, [tab.id]);
 
@@ -88,7 +104,7 @@ export function TableView({ tab }: TableViewProps) {
     setLoading(true);
     setError(null);
 
-    fetchTableRows(tab.connectionId, tab.schema, tab.table, pageSize, page * pageSize)
+    fetchTableRows(tab.connectionId, tab.schema, tab.table, pageSize, page * pageSize, filters, sort)
       .then((res) => {
         if (!cancelled) setResult(res);
       })
@@ -102,20 +118,37 @@ export function TableView({ tab }: TableViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [tab.connectionId, tab.schema, tab.table, page, pageSize]);
+  }, [tab.connectionId, tab.schema, tab.table, page, pageSize, filters, sort]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    countTableRows(tab.connectionId, tab.schema, tab.table, filters)
+      .then((count) => {
+        if (!cancelled) setTotalRowCount(count);
+      })
+      .catch(() => {
+        if (!cancelled) setTotalRowCount(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab.connectionId, tab.schema, tab.table, filters]);
 
   function resetPendingState() {
     setPendingEdit(null);
     setSaveError(null);
     setSelectedRowIndices(new Set());
     setDeleteError(null);
+    setIsInsertingRow(false);
   }
 
   function refresh() {
     setError(null);
     setLoading(true);
     resetPendingState();
-    fetchTableRows(tab.connectionId, tab.schema, tab.table, pageSize, page * pageSize)
+    fetchTableRows(tab.connectionId, tab.schema, tab.table, pageSize, page * pageSize, filters, sort)
       .then(setResult)
       .catch((err) => setError(toErrorMessage(err)))
       .finally(() => setLoading(false));
@@ -129,7 +162,65 @@ export function TableView({ tab }: TableViewProps) {
   function changePageSize(next: number) {
     resetPendingState();
     setPageSize(next);
+    setPageSizeInput(String(next));
     setPage(0);
+  }
+
+  function commitPageSizeInput() {
+    const next = Number(pageSizeInput);
+    if (!Number.isFinite(next) || next < 1) {
+      setPageSizeInput(String(pageSize));
+      return;
+    }
+    const clamped = Math.min(Math.trunc(next), MAX_PAGE_SIZE);
+    if (clamped === pageSize) {
+      setPageSizeInput(String(pageSize));
+      return;
+    }
+    changePageSize(clamped);
+  }
+
+  function applyFilters(next: TableFilter[]) {
+    resetPendingState();
+    setFilters(next);
+    setPage(0);
+  }
+
+  function handleHeaderSortClick(column: string, direction: "asc" | "desc") {
+    resetPendingState();
+    setSort([{ column, direction }]);
+    setPage(0);
+  }
+
+  function applySort(next: TableSort[]) {
+    resetPendingState();
+    setSort(next);
+    setPage(0);
+  }
+
+  function clearFilters() {
+    resetPendingState();
+    setFilters([]);
+    setShowFilters(false);
+    setPage(0);
+  }
+
+  function clearSort() {
+    resetPendingState();
+    setSort([]);
+    setShowSort(false);
+    setPage(0);
+  }
+
+  function applyHiddenColumns(next: Set<string>) {
+    setHiddenColumns(next);
+  }
+
+  function handleAddRow() {
+    if (!result) return;
+    resetPendingState();
+    setIsInsertingRow(true);
+    setPendingEdit({ rowIndex: 0, row: result.columns.map(() => null), values: {} });
   }
 
   async function handleSaveEdit() {
@@ -137,24 +228,34 @@ export function TableView({ tab }: TableViewProps) {
     const changedColumns = Object.keys(pendingEdit.values);
     if (changedColumns.length === 0) {
       setPendingEdit(null);
+      setIsInsertingRow(false);
       return;
     }
 
     setSaving(true);
     setSaveError(null);
     try {
-      const rowObject = rowToObject(result.columns, pendingEdit.row);
-      for (const columnName of changedColumns) {
-        await updateCellText(
-          tab.connectionId,
-          tab.schema,
-          tab.table,
-          rowObject,
-          columnName,
-          pendingEdit.values[columnName]
-        );
+      if (isInsertingRow) {
+        const values: Record<string, CellValue> = {};
+        for (const columnName of changedColumns) {
+          values[columnName] = pendingEdit.values[columnName];
+        }
+        await insertRow(tab.connectionId, tab.schema, tab.table, values);
+      } else {
+        const rowObject = rowToObject(result.columns, pendingEdit.row);
+        for (const columnName of changedColumns) {
+          await updateCellText(
+            tab.connectionId,
+            tab.schema,
+            tab.table,
+            rowObject,
+            columnName,
+            pendingEdit.values[columnName]
+          );
+        }
       }
       setPendingEdit(null);
+      setIsInsertingRow(false);
       refresh();
     } catch (err) {
       setSaveError(toErrorMessage(err));
@@ -165,6 +266,7 @@ export function TableView({ tab }: TableViewProps) {
 
   function handleDiscardEdit() {
     setPendingEdit(null);
+    setIsInsertingRow(false);
     setSaveError(null);
   }
 
@@ -221,18 +323,56 @@ export function TableView({ tab }: TableViewProps) {
               Delete {selectedCount}
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="xs"
+            className="gap-1.5"
+            onClick={handleAddRow}
+            disabled={loading || !result || pendingEdit !== null}
+          >
+            <Plus className="size-3.5" />
+            Add Row
+          </Button>
           <Button variant="ghost" size="icon-sm" onClick={refresh} disabled={loading}>
             <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
 
+      <TableToolbar
+        columns={result?.columns ?? []}
+        filters={filters}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters((prev) => !prev)}
+        sort={sort}
+        showSort={showSort}
+        onToggleSort={() => setShowSort((prev) => !prev)}
+        hiddenColumns={hiddenColumns}
+        onHiddenColumnsChange={applyHiddenColumns}
+      />
+      {showFilters && (
+        <TableFilterBar
+          columns={result?.columns ?? []}
+          filters={filters}
+          onApply={applyFilters}
+          onClear={clearFilters}
+        />
+      )}
+      {showSort && (
+        <TableSortBar
+          columns={result?.columns ?? []}
+          sort={sort}
+          onApply={applySort}
+          onClear={clearSort}
+        />
+      )}
+
       {pendingEdit !== null && (
         <div className="relative z-20 flex shrink-0 items-center justify-between gap-3 border-b bg-amber-500/10 px-3 py-1.5">
           <span className="text-xs text-amber-600 dark:text-amber-400">
-            Editing row {pendingEdit.rowIndex + 1}
+            {isInsertingRow ? "Adding new row" : `Editing row ${pendingEdit.rowIndex + 1}`}
             {pendingFieldCount > 0 &&
-              ` — ${pendingFieldCount} field${pendingFieldCount === 1 ? "" : "s"} changed`}
+              ` — ${pendingFieldCount} field${pendingFieldCount === 1 ? "" : "s"} ${isInsertingRow ? "set" : "changed"}`}
           </span>
           <div className="flex items-center gap-1.5">
             <Button variant="ghost" size="xs" className="gap-1" onClick={handleDiscardEdit} disabled={saving}>
@@ -282,16 +422,16 @@ export function TableView({ tab }: TableViewProps) {
           </div>
         )}
 
-        {result && !error && result.rowCount === 0 && (
+        {result && !error && result.rowCount === 0 && !isInsertingRow && (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             This table has no rows.
           </div>
         )}
 
-        {result && !error && result.rowCount > 0 && (
+        {result && !error && (result.rowCount > 0 || isInsertingRow) && (
           <DataGrid
             columns={result.columns}
-            rows={result.rows}
+            rows={isInsertingRow ? [result.columns.map(() => null), ...result.rows] : result.rows}
             editable
             pendingEdit={pendingEdit}
             onPendingEditChange={(edit) => {
@@ -300,8 +440,16 @@ export function TableView({ tab }: TableViewProps) {
             }}
             saving={saving}
             selectable
-            selectedRowIndices={selectedRowIndices}
-            onSelectionChange={setSelectedRowIndices}
+            selectedRowIndices={
+              isInsertingRow ? new Set([...selectedRowIndices].map((i) => i + 1)) : selectedRowIndices
+            }
+            onSelectionChange={(indices) =>
+              setSelectedRowIndices(
+                isInsertingRow
+                  ? new Set([...indices].filter((i) => i > 0).map((i) => i - 1))
+                  : indices
+              )
+            }
             onOpenJsonCell={(columnName, value, row, mode) => {
               setJsonSheet({
                 connectionId: tab.connectionId,
@@ -313,12 +461,23 @@ export function TableView({ tab }: TableViewProps) {
                 mode,
               });
             }}
-            onDeleteRow={handleDeleteRow}
+            onDeleteRow={(rowIndex) => {
+              if (isInsertingRow) {
+                if (rowIndex === 0) return;
+                handleDeleteRow(rowIndex - 1);
+              } else {
+                handleDeleteRow(rowIndex);
+              }
+            }}
+            sortColumn={sort[0]?.column ?? null}
+            sortDirection={sort[0]?.direction ?? null}
+            onSortChange={handleHeaderSortClick}
+            hiddenColumns={hiddenColumns}
           />
         )}
       </div>
 
-      <div className="flex shrink-0 items-center justify-between gap-3 border-t px-3 py-1.5">
+      <div className="relative flex shrink-0 items-center justify-between gap-3 border-t px-3 py-1.5">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -337,35 +496,31 @@ export function TableView({ tab }: TableViewProps) {
           >
             <ChevronRight className="size-3.5" />
           </Button>
-          <Select
-            value={String(pageSize)}
-            onValueChange={(value) => changePageSize(Number(value))}
-            disabled={loading}
-          >
-            <SelectTrigger size="sm" className="h-7 w-[130px] text-xs">
-              {loading ? (
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Loader2 className="size-3 animate-spin" />
-                  Loading…
-                </span>
-              ) : (
-                <SelectValue />
-              )}
-            </SelectTrigger>
-            <SelectContent>
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <SelectItem key={size} value={String(size)}>
-                  {size} rows / page
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="number"
+              draggable={false}
+              min={1}
+              max={MAX_PAGE_SIZE}
+              value={pageSizeInput}
+              disabled={loading}
+              onChange={(e) => setPageSizeInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && commitPageSizeInput()}
+              onBlur={commitPageSizeInput}
+              className="h-7 w-16 text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span className="text-xs text-muted-foreground">rows / page</span>
+          </div>
         </div>
 
         {result && (
-          <span className="text-xs text-muted-foreground">
-            {result.rowCount} rows on this page · {result.durationMs}ms
-          </span>
+          <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 text-xs text-muted-foreground">
+            <span>
+              {result.rowCount.toLocaleString()}
+              {totalRowCount !== null && ` / ${totalRowCount.toLocaleString()}`} rows
+            </span>
+            <span>{result.durationMs}ms</span>
+          </div>
         )}
 
         <div className="flex items-center gap-1.5">

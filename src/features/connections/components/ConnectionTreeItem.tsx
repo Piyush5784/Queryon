@@ -1,6 +1,26 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, Eye, History, Loader2, Plug, Plus, Star, Table2, Trash2, XCircle } from "lucide-react";
+import {
+  ChevronRight,
+  Copy,
+  Eye,
+  History,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Plug,
+  Plus,
+  Star,
+  Table2,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/src/app/components/ui/dropdown-menu";
 import {
   SidebarMenuAction,
   SidebarMenuButton,
@@ -9,7 +29,8 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/src/app/components/ui/sidebar";
-import type { SavedConnectionProfile } from "@/src/features/connections/types";
+import { RenameConnectionDialog } from "@/src/features/connections/components/RenameConnectionDialog";
+import { toDisplayUrl, type SavedConnectionProfile } from "@/src/features/connections/types";
 import {
   clearQueryHistory,
   deleteSavedQuery,
@@ -32,6 +53,7 @@ interface ConnectionTreeItemProps {
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (sql: string) => void;
   onNewQuery: () => void;
+  onConnectionRenamed: () => void;
 }
 
 export function ConnectionTreeItem({
@@ -45,10 +67,12 @@ export function ConnectionTreeItem({
   onOpenSavedQuery,
   onOpenHistoryEntry,
   onNewQuery,
+  onConnectionRenamed,
 }: ConnectionTreeItemProps) {
   const [expanded, setExpanded] = useState(isActive);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [tables, setTables] = useState<TableRef[] | null>(null);
 
   useEffect(() => {
@@ -100,6 +124,36 @@ export function ConnectionTreeItem({
         )}
         <span className={isConnected ? "" : "text-muted-foreground"}>{connection.name}</span>
       </SidebarMenuButton>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <SidebarMenuAction showOnHover title="More options">
+              <MoreHorizontal />
+            </SidebarMenuAction>
+          }
+        />
+        <DropdownMenuContent align="start" side="right" className={"min-w-37.5"}>
+          <DropdownMenuItem onClick={() => setRenameOpen(true)}>
+            <Pencil className="size-3.5" />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => navigator.clipboard.writeText(toDisplayUrl(connection))}
+          >
+            <Copy className="size-3.5" />
+            Copy Connection String
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <RenameConnectionDialog
+        connectionId={connection.id}
+        currentName={connection.name}
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        onRenamed={onConnectionRenamed}
+      />
 
       {expanded && (
         <SidebarMenuSub>

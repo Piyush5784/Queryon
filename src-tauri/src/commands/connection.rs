@@ -77,3 +77,13 @@ pub async fn db_connect_saved(
 pub fn db_delete_saved_connection(app: AppHandle<Wry>, connection_id: String) -> Result<(), AppError> {
     service::delete_saved_connection(&app, &connection_id)
 }
+
+#[tauri::command]
+#[specta::specta]
+pub fn db_rename_saved_connection(
+    app: AppHandle<Wry>,
+    connection_id: String,
+    name: String,
+) -> Result<(), AppError> {
+    service::rename_saved_connection(&app, &connection_id, &name)
+}

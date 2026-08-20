@@ -4,13 +4,17 @@ import type {
   ConnectionInfo,
   ConnectionProfile,
   ExportFormat,
+  FilterOperator,
   QueryHistoryEntry,
   RowsExportRequest,
   SavedConnectionProfile,
   SavedQuery,
+  SortDirection,
   TableExportRequest,
+  TableFilter,
   TableRef,
   TableRowsResult as RawTableRowsResult,
+  TableSort,
   QueryResult as RawQueryResult,
 } from "@/src/lib/tauri/bindings";
 
@@ -19,12 +23,16 @@ export type {
   ConnectionInfo,
   ConnectionProfile,
   ExportFormat,
+  FilterOperator,
   QueryHistoryEntry,
   RowsExportRequest,
   SavedConnectionProfile,
   SavedQuery,
+  SortDirection,
   TableExportRequest,
+  TableFilter,
   TableRef,
+  TableSort,
 };
 
 export type CellValue = string | number | boolean | null | Record<string, unknown> | unknown[];
@@ -107,6 +115,10 @@ export async function deleteSavedConnection(connectionId: string): Promise<void>
   await unwrap(await commands.dbDeleteSavedConnection(connectionId));
 }
 
+export async function renameSavedConnection(connectionId: string, name: string): Promise<void> {
+  await unwrap(await commands.dbRenameSavedConnection(connectionId, name));
+}
+
 export async function listTables(connectionId: string): Promise<TableRef[]> {
   return unwrap(await commands.dbListTables(connectionId));
 }
@@ -124,12 +136,23 @@ export async function fetchTableRows(
   schema: string,
   table: string,
   limit: number,
-  offset: number
+  offset: number,
+  filters: TableFilter[] = [],
+  sort: TableSort[] = []
 ): Promise<TableRowsResult> {
   const raw: RawTableRowsResult = await unwrap(
-    await commands.dbFetchTableRows(connectionId, schema, table, limit, offset)
+    await commands.dbFetchTableRows(connectionId, schema, table, limit, offset, filters, sort)
   );
   return { ...raw, rows: decodeRows(raw.rows) };
+}
+
+export async function countTableRows(
+  connectionId: string,
+  schema: string,
+  table: string,
+  filters: TableFilter[] = []
+): Promise<number> {
+  return unwrap(await commands.dbCountTableRows(connectionId, schema, table, filters));
 }
 
 export async function updateJsonCell(
@@ -165,6 +188,15 @@ export async function deleteRows(
   rows: Record<string, CellValue>[]
 ): Promise<number> {
   return unwrap(await commands.dbDeleteRows(connectionId, schema, table, rows.map(encodeRow)));
+}
+
+export async function insertRow(
+  connectionId: string,
+  schema: string,
+  table: string,
+  values: Record<string, CellValue>
+): Promise<void> {
+  await unwrap(await commands.dbInsertRow(connectionId, schema, table, encodeRow(values)));
 }
 
 export async function executeQuery(connectionId: string, sql: string): Promise<QueryResult> {

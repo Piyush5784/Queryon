@@ -4,95 +4,219 @@
 -- Existing hand-written seed rows (docker/initdb-mysql/01_schema.sql) are
 -- left alone — this only appends.
 --
--- MySQL doesn't allow `WITH RECURSIVE ... INSERT INTO ... SELECT` at the
--- top level (unlike Postgres) — the CTE has to be wrapped as a derived
--- table inside the SELECT that feeds the INSERT.
+-- Inserted in chunks of `batch_size` rows, each batch its own transaction
+-- (explicit START TRANSACTION/COMMIT inside a stored procedure loop), so
+-- a kill/timeout only loses the in-flight batch and lock hold-time per
+-- statement stays short.
+--
+-- Foreign keys are picked by materializing `rand()` picks into a real
+-- temporary table (CREATE TEMPORARY TABLE ... AS SELECT) and then JOINing
+-- to a row-numbered lookup table, rather than a correlated scalar
+-- subquery (`(select id from t where rn = 1 + floor(rand() * n))`).
+-- MySQL's optimizer can evaluate a non-deterministic function like
+-- RAND() more than once per row inside a correlated subquery condition,
+-- which manifests as spurious "Subquery returns more than 1 row" errors
+-- or picks that silently don't match any row. Materializing the pick
+-- first forces RAND() to be evaluated exactly once per row and frozen
+-- before the join, which is reliable. The recursive-CTE sequence
+-- generator is likewise dropped in favor of a numbers table built once.
 
 set @n = coalesce(@n, 1000);
+set @batch_size = 500;
 set session cte_max_recursion_depth = 2000000;
 
+drop temporary table if exists _seed_numbers;
+create temporary table _seed_numbers (i int primary key);
+
+set @max_n = greatest(@n * 2, @n);
+insert into _seed_numbers (i)
+with recursive seq(i) as (
+    select 1
+    union all
+    select i + 1 from seq where i < @max_n
+)
+select i from seq;
+
 insert into categories (name)
-select concat('Category ', i) from (
-    with recursive seq(i) as (
-        select 1
-        union all
-        select i + 1 from seq where i < greatest(@n div 20, 5)
-    )
-    select i from seq
-) as s
+select concat('Category ', i) from _seed_numbers where i <= greatest(@n div 20, 5)
 on duplicate key update name = name;
 
-insert into users (email, full_name, is_active, metadata)
-select
-    concat('user_', i, '_', substring(md5(rand()), 1, 8), '@example.com'),
-    concat(
-        elt(1 + floor(rand() * 8), 'Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Jamie', 'Drew'),
-        ' ',
-        elt(1 + floor(rand() * 8), 'Smith', 'Johnson', 'Lee', 'Patel', 'Garcia', 'Kim', 'Nguyen', 'Brown')
-    ),
-    rand() > 0.15,
-    json_object(
-        'plan', elt(1 + floor(rand() * 3), 'free', 'pro', 'enterprise'),
-        'signupSource', elt(1 + floor(rand() * 4), 'organic', 'referral', 'ads', 'social')
-    )
-from (
-    with recursive seq(i) as (
-        select 1
-        union all
-        select i + 1 from seq where i < @n
-    )
-    select i from seq
-) as s;
+drop procedure if exists _seed_users;
+delimiter $$
+create procedure _seed_users(in total int, in batch_size int)
+begin
+    declare done int default 0;
+    declare remaining int;
+    seed_loop: loop
+        if done >= total then
+            leave seed_loop;
+        end if;
+        set remaining = least(batch_size, total - done);
+        start transaction;
+        insert into users (email, full_name, is_active, metadata)
+        select
+            concat('user_', done + i, '_', substring(md5(rand()), 1, 8), '@example.com'),
+            concat(
+                elt(1 + floor(rand() * 8), 'Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Jamie', 'Drew'),
+                ' ',
+                elt(1 + floor(rand() * 8), 'Smith', 'Johnson', 'Lee', 'Patel', 'Garcia', 'Kim', 'Nguyen', 'Brown')
+            ),
+            rand() > 0.15,
+            json_object(
+                'plan', elt(1 + floor(rand() * 3), 'free', 'pro', 'enterprise'),
+                'signupSource', elt(1 + floor(rand() * 4), 'organic', 'referral', 'ads', 'social')
+            )
+        from _seed_numbers
+        where i <= remaining;
+        commit;
+        set done = done + remaining;
+    end loop;
+end$$
+delimiter ;
 
-insert into products (category_id, sku, name, price_cents, in_stock)
-select
-    (select id from categories order by rand() limit 1),
-    concat('SKU-', i, '-', substring(md5(rand()), 1, 6)),
-    concat(
-        elt(1 + floor(rand() * 6), 'Widget', 'Gadget', 'Gizmo', 'Doohickey', 'Contraption', 'Thingamajig'),
-        ' ',
-        elt(1 + floor(rand() * 6), 'Pro', 'Max', 'Mini', 'Plus', 'Lite', 'Ultra')
-    ),
-    floor(rand() * 49900 + 100),
-    rand() > 0.1
-from (
-    with recursive seq(i) as (
-        select 1
-        union all
-        select i + 1 from seq where i < @n
-    )
-    select i from seq
-) as s;
+call _seed_users(@n, @batch_size);
+drop procedure _seed_users;
 
-insert into orders (user_id, status, total_cents, notes)
-select
-    (select id from users order by rand() limit 1),
-    elt(1 + floor(rand() * 4), 'pending', 'paid', 'shipped', 'cancelled'),
-    floor(rand() * 99900 + 500),
-    case when rand() > 0.7 then concat('Order note ', i) else null end
-from (
-    with recursive seq(i) as (
-        select 1
-        union all
-        select i + 1 from seq where i < @n
-    )
-    select i from seq
-) as s;
+-- Row-numbered lookup tables for materialize-then-join FK picks.
+drop temporary table if exists _cat_ids;
+create temporary table _cat_ids as select row_number() over (order by id) as rn, id from categories;
+alter table _cat_ids add primary key (rn);
+set @cat_count = (select count(*) from _cat_ids);
 
-insert into order_items (order_id, product_id, quantity, unit_price_cents)
-select
-    (select id from orders order by rand() limit 1),
-    (select id from products order by rand() limit 1),
-    floor(1 + rand() * 5),
-    floor(rand() * 49900 + 100)
-from (
-    with recursive seq(i) as (
-        select 1
-        union all
-        select i + 1 from seq where i < @n * 2
-    )
-    select i from seq
-) as s;
+drop procedure if exists _seed_products;
+delimiter $$
+create procedure _seed_products(in total int, in batch_size int, in cat_count int)
+begin
+    declare done int default 0;
+    declare remaining int;
+    seed_loop: loop
+        if done >= total then
+            leave seed_loop;
+        end if;
+        set remaining = least(batch_size, total - done);
+
+        drop temporary table if exists _product_picks;
+        create temporary table _product_picks as
+        select i, 1 + floor(rand() * cat_count) as cat_pick
+        from _seed_numbers
+        where i <= remaining;
+
+        start transaction;
+        insert into products (category_id, sku, name, price_cents, in_stock)
+        select
+            c.id,
+            concat('SKU-', done + p.i, '-', substring(md5(rand()), 1, 6)),
+            concat(
+                elt(1 + floor(rand() * 6), 'Widget', 'Gadget', 'Gizmo', 'Doohickey', 'Contraption', 'Thingamajig'),
+                ' ',
+                elt(1 + floor(rand() * 6), 'Pro', 'Max', 'Mini', 'Plus', 'Lite', 'Ultra')
+            ),
+            floor(rand() * 49900 + 100),
+            rand() > 0.1
+        from _product_picks p
+        join _cat_ids c on c.rn = p.cat_pick;
+        commit;
+        set done = done + remaining;
+    end loop;
+end$$
+delimiter ;
+
+call _seed_products(@n, @batch_size, @cat_count);
+drop procedure _seed_products;
+drop temporary table if exists _product_picks;
+
+drop temporary table if exists _user_ids;
+create temporary table _user_ids as select row_number() over (order by id) as rn, id from users;
+alter table _user_ids add primary key (rn);
+set @user_count = (select count(*) from _user_ids);
+
+drop procedure if exists _seed_orders;
+delimiter $$
+create procedure _seed_orders(in total int, in batch_size int, in user_count int)
+begin
+    declare done int default 0;
+    declare remaining int;
+    seed_loop: loop
+        if done >= total then
+            leave seed_loop;
+        end if;
+        set remaining = least(batch_size, total - done);
+
+        drop temporary table if exists _order_picks;
+        create temporary table _order_picks as
+        select i, 1 + floor(rand() * user_count) as user_pick
+        from _seed_numbers
+        where i <= remaining;
+
+        start transaction;
+        insert into orders (user_id, status, total_cents, notes)
+        select
+            u.id,
+            elt(1 + floor(rand() * 4), 'pending', 'paid', 'shipped', 'cancelled'),
+            floor(rand() * 99900 + 500),
+            case when rand() > 0.7 then concat('Order note ', done + o.i) else null end
+        from _order_picks o
+        join _user_ids u on u.rn = o.user_pick;
+        commit;
+        set done = done + remaining;
+    end loop;
+end$$
+delimiter ;
+
+call _seed_orders(@n, @batch_size, @user_count);
+drop procedure _seed_orders;
+drop temporary table if exists _order_picks;
+
+drop temporary table if exists _order_ids;
+create temporary table _order_ids as select row_number() over (order by id) as rn, id from orders;
+alter table _order_ids add primary key (rn);
+set @order_count = (select count(*) from _order_ids);
+
+drop temporary table if exists _product_ids;
+create temporary table _product_ids as select row_number() over (order by id) as rn, id from products;
+alter table _product_ids add primary key (rn);
+set @product_count = (select count(*) from _product_ids);
+
+drop procedure if exists _seed_order_items;
+delimiter $$
+create procedure _seed_order_items(in total int, in batch_size int, in order_count int, in product_count int)
+begin
+    declare done int default 0;
+    declare remaining int;
+    seed_loop: loop
+        if done >= total then
+            leave seed_loop;
+        end if;
+        set remaining = least(batch_size, total - done);
+
+        drop temporary table if exists _item_picks;
+        create temporary table _item_picks as
+        select
+            i,
+            1 + floor(rand() * order_count) as order_pick,
+            1 + floor(rand() * product_count) as product_pick
+        from _seed_numbers
+        where i <= remaining;
+
+        start transaction;
+        insert into order_items (order_id, product_id, quantity, unit_price_cents)
+        select
+            o.id,
+            p.id,
+            floor(1 + rand() * 5),
+            floor(rand() * 49900 + 100)
+        from _item_picks ip
+        join _order_ids o on o.rn = ip.order_pick
+        join _product_ids p on p.rn = ip.product_pick;
+        commit;
+        set done = done + remaining;
+    end loop;
+end$$
+delimiter ;
+
+call _seed_order_items(@n * 2, @batch_size, @order_count, @product_count);
+drop procedure _seed_order_items;
+drop temporary table if exists _item_picks;
 
 select
     (select count(*) from users) as users,

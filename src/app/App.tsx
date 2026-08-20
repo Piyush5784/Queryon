@@ -169,6 +169,7 @@ function App() {
           onNewQuery={handleNewQuery}
           onOpenSavedQuery={handleOpenSavedQuery}
           onOpenHistoryEntry={handleOpenHistoryEntry}
+          onConnectionRenamed={refreshSavedConnections}
           showHome={showHome}
           onGoHome={() => setShowHome(true)}
           tabs={tabs}

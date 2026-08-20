@@ -49,11 +49,32 @@ pub fn remove(app: &AppHandle<Wry>, connection_id: &str) -> Result<(), AppError>
     write_all(app, &profiles)
 }
 
+/// Updates only a saved profile's display name — never touches the
+/// password, which lives separately in `credential_vault`.
+pub fn rename(app: &AppHandle<Wry>, connection_id: &str, name: &str) -> Result<(), AppError> {
+    let mut profiles = read_all(app)?;
+    apply_rename(&mut profiles, connection_id, name)?;
+    write_all(app, &profiles)
+}
+
 fn apply_upsert(profiles: &mut Vec<SavedConnectionProfile>, profile: SavedConnectionProfile) {
     match profiles.iter_mut().find(|p| p.id == profile.id) {
         Some(existing) => *existing = profile,
         None => profiles.push(profile),
     }
+}
+
+fn apply_rename(
+    profiles: &mut [SavedConnectionProfile],
+    connection_id: &str,
+    name: &str,
+) -> Result<(), AppError> {
+    let profile = profiles
+        .iter_mut()
+        .find(|p| p.id == connection_id)
+        .ok_or_else(|| AppError::new("No saved connection found with this id."))?;
+    profile.name = name.to_string();
+    Ok(())
 }
 
 fn apply_remove(profiles: &mut Vec<SavedConnectionProfile>, connection_id: &str) {
@@ -107,5 +128,19 @@ mod tests {
         let mut profiles = vec![profile("a", "First")];
         apply_remove(&mut profiles, "does-not-exist");
         assert_eq!(profiles.len(), 1);
+    }
+
+    #[test]
+    fn rename_updates_only_the_matching_profiles_name() {
+        let mut profiles = vec![profile("a", "First"), profile("b", "Second")];
+        apply_rename(&mut profiles, "a", "Renamed").expect("rename failed");
+        assert_eq!(profiles[0].name, "Renamed");
+        assert_eq!(profiles[1].name, "Second");
+    }
+
+    #[test]
+    fn rename_errors_for_an_unknown_id() {
+        let mut profiles = vec![profile("a", "First")];
+        assert!(apply_rename(&mut profiles, "does-not-exist", "Renamed").is_err());
     }
 }

@@ -4,8 +4,103 @@ use sqlx::mysql::{MySqlArguments, MySqlPool, MySqlRow};
 use sqlx::{Arguments, AssertSqlSafe, Column, Row, TypeInfo};
 
 use crate::domain::query::RawQueryResult;
-use crate::domain::table::TableRowsResult;
+use crate::domain::table::{FilterOperator, SortDirection, TableFilter, TableRowsResult, TableSort};
 use crate::error::AppError;
+
+fn build_where_clause(filters: &[TableFilter], values: &mut Vec<String>) -> String {
+    if filters.is_empty() {
+        return String::new();
+    }
+
+    let clauses: Vec<String> = filters
+        .iter()
+        .map(|filter| {
+            let col = quote_ident(&filter.column);
+            match filter.operator {
+                FilterOperator::IsNull => format!("{col} is null"),
+                FilterOperator::IsNotNull => format!("{col} is not null"),
+                FilterOperator::Equals => {
+                    values.push(filter.value.clone().unwrap_or_default());
+                    format!("cast({col} as char) = ?")
+                }
+                FilterOperator::NotEquals => {
+                    values.push(filter.value.clone().unwrap_or_default());
+                    format!("cast({col} as char) <> ?")
+                }
+                FilterOperator::Like => {
+                    values.push(filter.value.clone().unwrap_or_default());
+                    format!("cast({col} as char) like ?")
+                }
+                FilterOperator::Ilike => {
+                    values.push(filter.value.clone().unwrap_or_default().to_lowercase());
+                    format!("lower(cast({col} as char)) like ?")
+                }
+                FilterOperator::NotLike => {
+                    values.push(filter.value.clone().unwrap_or_default());
+                    format!("cast({col} as char) not like ?")
+                }
+                FilterOperator::GreaterThan => {
+                    values.push(filter.value.clone().unwrap_or_default());
+                    format!("cast({col} as decimal(65,10)) > cast(? as decimal(65,10))")
+                }
+                FilterOperator::GreaterOrEquals => {
+                    values.push(filter.value.clone().unwrap_or_default());
+                    format!("cast({col} as decimal(65,10)) >= cast(? as decimal(65,10))")
+                }
+                FilterOperator::LessThan => {
+                    values.push(filter.value.clone().unwrap_or_default());
+                    format!("cast({col} as decimal(65,10)) < cast(? as decimal(65,10))")
+                }
+                FilterOperator::LessOrEquals => {
+                    values.push(filter.value.clone().unwrap_or_default());
+                    format!("cast({col} as decimal(65,10)) <= cast(? as decimal(65,10))")
+                }
+                FilterOperator::In => {
+                    let items: Vec<String> = filter
+                        .value
+                        .as_deref()
+                        .unwrap_or("")
+                        .split(',')
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty())
+                        .collect();
+                    if items.is_empty() {
+                        return "false".to_string();
+                    }
+                    let placeholders: Vec<&str> = items
+                        .into_iter()
+                        .map(|v| {
+                            values.push(v);
+                            "?"
+                        })
+                        .collect();
+                    format!("cast({col} as char) in ({})", placeholders.join(", "))
+                }
+            }
+        })
+        .collect();
+
+    format!(" where {}", clauses.join(" and "))
+}
+
+fn build_order_by_clause(sort: &[TableSort]) -> String {
+    if sort.is_empty() {
+        return String::new();
+    }
+
+    let clauses: Vec<String> = sort
+        .iter()
+        .map(|s| {
+            let direction = match s.direction {
+                SortDirection::Asc => "asc",
+                SortDirection::Desc => "desc",
+            };
+            format!("{} {}", quote_ident(&s.column), direction)
+        })
+        .collect();
+
+    format!(" order by {}", clauses.join(", "))
+}
 
 pub async fn fetch_rows(
     pool: &MySqlPool,
@@ -13,15 +108,27 @@ pub async fn fetch_rows(
     table: &str,
     limit: i64,
     offset: i64,
+    filters: &[TableFilter],
+    sort: &[TableSort],
 ) -> Result<TableRowsResult, AppError> {
+    let mut filter_values: Vec<String> = Vec::new();
+    let where_clause = build_where_clause(filters, &mut filter_values);
+    let order_by_clause = build_order_by_clause(sort);
+
     let sql = format!(
-        "select * from {} limit ? offset ?",
-        quote_qualified(schema, table)
+        "select * from {}{}{} limit ? offset ?",
+        quote_qualified(schema, table),
+        where_clause,
+        order_by_clause
     );
 
-    let rows = sqlx::query(AssertSqlSafe(sql))
-        .bind(limit)
-        .bind(offset)
+    let mut query = sqlx::query(AssertSqlSafe(sql));
+    for value in &filter_values {
+        query = query.bind(value.clone());
+    }
+    query = query.bind(limit).bind(offset);
+
+    let rows = query
         .fetch_all(pool)
         .await
         .map_err(|e| AppError::new(format!("Failed to fetch rows: {}", clean_mysql_error(&e))))?;
@@ -52,6 +159,35 @@ pub async fn fetch_rows(
         // driver-lookup + fetch round trip; see commands/table.rs.
         duration_ms: 0,
     })
+}
+
+pub async fn count_rows(
+    pool: &MySqlPool,
+    schema: &str,
+    table: &str,
+    filters: &[TableFilter],
+) -> Result<u64, AppError> {
+    let mut filter_values: Vec<String> = Vec::new();
+    let where_clause = build_where_clause(filters, &mut filter_values);
+
+    let sql = format!(
+        "select count(*) from {}{}",
+        quote_qualified(schema, table),
+        where_clause
+    );
+
+    let mut query = sqlx::query(AssertSqlSafe(sql));
+    for value in &filter_values {
+        query = query.bind(value.clone());
+    }
+
+    let row = query
+        .fetch_one(pool)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to count rows: {}", clean_mysql_error(&e))))?;
+
+    let count: i64 = row.try_get(0).map_err(|e| AppError::new(format!("Failed to read row count: {e}")))?;
+    Ok(count as u64)
 }
 
 pub async fn execute_query(pool: &MySqlPool, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {
@@ -132,6 +268,43 @@ pub async fn update_cell_text(
     );
 
     execute_single_row_update(pool, &sql, args, "update cell").await
+}
+
+/// Inserts one row. Any column left out of `values` falls back to its
+/// table default / null.
+pub async fn insert_row(
+    pool: &MySqlPool,
+    schema: &str,
+    table: &str,
+    values: &[(String, String)],
+) -> Result<(), AppError> {
+    if values.is_empty() {
+        return Err(AppError::new("Cannot insert a row with no columns."));
+    }
+
+    let mut args = MySqlArguments::default();
+    let mut column_names = Vec::with_capacity(values.len());
+    let mut placeholders = Vec::with_capacity(values.len());
+
+    for (column, value) in values {
+        let _ = args.add(value.clone());
+        column_names.push(quote_ident(column));
+        placeholders.push("?".to_string());
+    }
+
+    let sql = format!(
+        "insert into {} ({}) values ({})",
+        quote_qualified(schema, table),
+        column_names.join(", "),
+        placeholders.join(", ")
+    );
+
+    sqlx::query_with(AssertSqlSafe(sql), args)
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to insert row: {}", clean_mysql_error(&e))))?;
+
+    Ok(())
 }
 
 pub async fn delete_rows(

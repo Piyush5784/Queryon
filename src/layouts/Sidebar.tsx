@@ -29,6 +29,7 @@ interface SidebarProps {
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (connectionId: string, sql: string) => void;
   onNewQuery: (connectionId?: string) => void;
+  onConnectionRenamed: () => void;
 }
 
 export function Sidebar({
@@ -43,6 +44,7 @@ export function Sidebar({
   onOpenSavedQuery,
   onOpenHistoryEntry,
   onNewQuery,
+  onConnectionRenamed,
 }: SidebarProps) {
   const { theme, setTheme } = useTheme();
 
@@ -93,6 +95,7 @@ export function Sidebar({
                     onOpenSavedQuery={onOpenSavedQuery}
                     onOpenHistoryEntry={(sql) => onOpenHistoryEntry(conn.id, sql)}
                     onNewQuery={() => onNewQuery(conn.id)}
+                    onConnectionRenamed={onConnectionRenamed}
                   />
                 ))}
               </SidebarMenu>
