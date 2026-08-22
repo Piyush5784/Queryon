@@ -12,10 +12,12 @@ import type {
   DdlStatement,
   ExportFormat,
   FilterOperator,
+  ForeignKeyAction,
   IndexInfo,
   NewColumn,
   NewConstraint,
   NewIndex,
+  QueryExportRequest,
   QueryHistoryEntry,
   RowsExportRequest,
   SavedConnectionProfile,
@@ -27,6 +29,7 @@ import type {
   TableRowsResult as RawTableRowsResult,
   TableSort,
   QueryResult as RawQueryResult,
+  QueryResultPage as RawQueryResultPage,
 } from "@/src/lib/tauri/bindings";
 
 export type {
@@ -42,10 +45,12 @@ export type {
   DdlStatement,
   ExportFormat,
   FilterOperator,
+  ForeignKeyAction,
   IndexInfo,
   NewColumn,
   NewConstraint,
   NewIndex,
+  QueryExportRequest,
   QueryHistoryEntry,
   RowsExportRequest,
   SavedConnectionProfile,
@@ -72,8 +77,7 @@ export type QueryResult =
       kind: "rows";
       columns: string[];
       rows: CellValue[][];
-      rowCount: number;
-      truncated: boolean;
+      totalRowCount: number | null;
       durationMs: number;
     }
   | {
@@ -81,6 +85,12 @@ export type QueryResult =
       rowCount: number;
       durationMs: number;
     };
+
+export interface QueryResultPage {
+  columns: string[];
+  rows: CellValue[][];
+  totalRowCount: number;
+}
 
 function decodeCell(cell: string): CellValue {
   try {
@@ -139,6 +149,10 @@ export async function deleteSavedConnection(connectionId: string): Promise<void>
 
 export async function renameSavedConnection(connectionId: string, name: string): Promise<void> {
   await unwrap(await commands.dbRenameSavedConnection(connectionId, name));
+}
+
+export async function pickSshKeyFile(): Promise<string | null> {
+  return unwrap(await commands.sshPickKeyFile());
 }
 
 export async function listTables(connectionId: string): Promise<TableRef[]> {
@@ -261,12 +275,52 @@ export async function insertRow(
   await unwrap(await commands.dbInsertRow(connectionId, schema, table, encodeRow(values)));
 }
 
-export async function executeQuery(connectionId: string, sql: string): Promise<QueryResult> {
-  const raw: RawQueryResult = await unwrap(await commands.dbExecuteQuery(connectionId, sql));
+export async function executeQuery(
+  connectionId: string,
+  sql: string,
+  tabId?: string
+): Promise<QueryResult> {
+  const raw: RawQueryResult = await unwrap(await commands.dbExecuteQuery(connectionId, sql, tabId ?? null));
   if (raw.kind === "affected") {
     return raw;
   }
   return { ...raw, rows: decodeRows(raw.rows) };
+}
+
+export async function cancelQuery(connectionId: string, tabId: string): Promise<void> {
+  await unwrap(await commands.dbCancelQuery(connectionId, tabId));
+}
+
+export async function fetchQueryResultPage(
+  connectionId: string,
+  tabId: string,
+  offset: number,
+  limit: number
+): Promise<QueryResultPage> {
+  const raw: RawQueryResultPage = await unwrap(
+    await commands.dbFetchQueryResultPage(connectionId, tabId, offset, limit)
+  );
+  return { ...raw, rows: decodeRows(raw.rows) };
+}
+
+export async function clearQueryResultCache(tabId: string): Promise<void> {
+  await commands.dbClearQueryResultCache(tabId);
+}
+
+export async function beginTransaction(connectionId: string, tabId: string): Promise<void> {
+  await unwrap(await commands.dbBeginTransaction(connectionId, tabId));
+}
+
+export async function commitTransaction(connectionId: string, tabId: string): Promise<void> {
+  await unwrap(await commands.dbCommitTransaction(connectionId, tabId));
+}
+
+export async function rollbackTransaction(connectionId: string, tabId: string): Promise<void> {
+  await unwrap(await commands.dbRollbackTransaction(connectionId, tabId));
+}
+
+export async function hasActiveTransaction(connectionId: string, tabId: string): Promise<boolean> {
+  return commands.dbHasActiveTransaction(connectionId, tabId);
 }
 
 export async function saveQuery(query: SavedQuery): Promise<void> {
@@ -303,6 +357,10 @@ export async function runTableExport(jobId: string, request: TableExportRequest)
 
 export async function runRowsExport(jobId: string, request: RowsExportRequest): Promise<void> {
   await unwrap(await commands.exportRunRows(jobId, request));
+}
+
+export async function runQueryExport(jobId: string, request: QueryExportRequest): Promise<void> {
+  await unwrap(await commands.exportRunQuery(jobId, request));
 }
 
 export async function cancelExport(jobId: string): Promise<void> {

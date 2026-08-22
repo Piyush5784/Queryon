@@ -7,27 +7,39 @@ use crate::domain::driver::DatabaseDriver;
 use crate::error::AppError;
 use crate::infrastructure::mysql::driver::MySqlDriver;
 use crate::infrastructure::postgres::driver::PostgresDriver;
+use crate::infrastructure::ssh::{self, SshTunnel};
 use crate::infrastructure::storage::{credential_vault, profile_store};
 
 use super::models::{ConnectionProfile, Engine, SavedConnectionProfile};
 
-/// The one place an engine is chosen — every other layer (state, commands,
-/// domain services) talks to connections only through `DatabaseDriver`.
-/// `Engine::Neon` is not a distinct wire protocol, so it builds the same
-/// `PostgresDriver` as `Engine::Postgres` (see `Engine`'s doc comment).
 pub async fn open_pool_and_verify(
     profile: &ConnectionProfile,
-) -> Result<(Arc<dyn DatabaseDriver>, String), AppError> {
+) -> Result<(Arc<dyn DatabaseDriver>, String, Option<SshTunnel>), AppError> {
     let build_start = Instant::now();
 
-    let driver: Arc<dyn DatabaseDriver> = match profile.engine {
-        Engine::Postgres | Engine::Neon => {
-            let pool = crate::infrastructure::postgres::pool::build_pool(profile)?;
+    let (dial_profile, tunnel) = match &profile.ssh_tunnel {
+        Some(tunnel_config) => {
+            let tunnel = ssh::open_tunnel(tunnel_config, &profile.host, profile.port).await?;
+            let mut dial_profile = profile.clone();
+            dial_profile.host = tunnel.local_addr.ip().to_string();
+            dial_profile.port = tunnel.local_addr.port();
+            (dial_profile, Some(tunnel))
+        }
+        None => (profile.clone(), None),
+    };
+
+    let driver: Arc<dyn DatabaseDriver> = match dial_profile.engine {
+        Engine::Postgres | Engine::Neon | Engine::CockroachDb => {
+            let pool = crate::infrastructure::postgres::pool::build_pool(&dial_profile)?;
             Arc::new(PostgresDriver::new(pool))
         }
         Engine::MySql => {
-            let pool = crate::infrastructure::mysql::pool::build_pool(profile).await?;
-            Arc::new(MySqlDriver::new(pool, profile.database.clone()))
+            let pool = crate::infrastructure::mysql::pool::build_pool(&dial_profile).await?;
+            Arc::new(MySqlDriver::new(pool, dial_profile.database.clone()))
+        }
+        Engine::MariaDb => {
+            let pool = crate::infrastructure::mysql::pool::build_pool(&dial_profile).await?;
+            Arc::new(MySqlDriver::new_mariadb(pool, dial_profile.database.clone()))
         }
     };
     log::info!("db_connect: build_pool took {:?}", build_start.elapsed());
@@ -36,11 +48,20 @@ pub async fn open_pool_and_verify(
     let server_version = driver.server_version().await?;
     log::info!("db_connect: fetch_server_version took {:?}", verify_start.elapsed());
 
-    Ok((driver, server_version))
+    Ok((driver, server_version, tunnel))
 }
 
 pub fn save_connection(app: &AppHandle<Wry>, profile: &ConnectionProfile) -> Result<(), AppError> {
     credential_vault::save_password(&profile.id, &profile.password)?;
+    if let Some(tunnel) = &profile.ssh_tunnel {
+        let secret = match &tunnel.auth {
+            super::models::SshAuth::Password { password } => password,
+            super::models::SshAuth::PrivateKey { passphrase, .. } => passphrase,
+        };
+        credential_vault::save_ssh_secret(&profile.id, secret)?;
+    } else {
+        credential_vault::delete_ssh_secret(&profile.id)?;
+    }
     profile_store::upsert(app, SavedConnectionProfile::from_profile(profile))
 }
 
@@ -58,11 +79,17 @@ pub async fn load_saved_connection(
         .find(|p| p.id == connection_id)
         .ok_or_else(|| AppError::new("No saved connection found with this id."))?;
     let password = credential_vault::load_password(connection_id)?;
-    Ok(saved.with_password(password))
+    let ssh_secret = if saved.ssh_tunnel.is_some() {
+        Some(credential_vault::load_ssh_secret(connection_id)?)
+    } else {
+        None
+    };
+    Ok(saved.with_password(password, ssh_secret))
 }
 
 pub fn delete_saved_connection(app: &AppHandle<Wry>, connection_id: &str) -> Result<(), AppError> {
     credential_vault::delete_password(connection_id)?;
+    credential_vault::delete_ssh_secret(connection_id)?;
     profile_store::remove(app, connection_id)
 }
 

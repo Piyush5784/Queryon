@@ -1,9 +1,17 @@
 use queryon_lib::domain::connection::{ConnectionProfile, Engine, SslMode};
 use queryon_lib::domain::query::service as query_service;
+use queryon_lib::domain::query::QueryResult;
 use queryon_lib::domain::schema::service as schema_service;
-use queryon_lib::domain::schema::{ColumnEdit, ConstraintKind, DdlStatement, NewColumn, NewConstraint, NewIndex};
+use queryon_lib::domain::schema::{
+    ColumnEdit, ConstraintKind, DdlStatement, ForeignKeyAction, NewColumn, NewConstraint, NewIndex,
+};
+use queryon_lib::error::AppError;
 use queryon_lib::infrastructure::mysql::driver::MySqlDriver;
 use queryon_lib::infrastructure::mysql::pool::build_pool;
+
+async fn exec(driver: &MySqlDriver, sql: &str) -> Result<QueryResult, AppError> {
+    query_service::execute_query(driver, sql).await
+}
 
 fn dev_profile() -> ConnectionProfile {
     ConnectionProfile {
@@ -16,11 +24,15 @@ fn dev_profile() -> ConnectionProfile {
         user: "devuser".to_string(),
         password: "devpass".to_string(),
         ssl_mode: SslMode::Disable,
+        read_only: false,
+        ssh_tunnel: None,
     }
 }
 
 async fn dev_driver() -> MySqlDriver {
-    let pool = build_pool(&dev_profile()).await.expect("failed to build pool");
+    let pool = build_pool(&dev_profile())
+        .await
+        .expect("failed to build pool");
     MySqlDriver::new(pool, "devdb".to_string())
 }
 
@@ -29,7 +41,7 @@ async fn dev_driver() -> MySqlDriver {
 /// table and drops it at the end, never touching the seeded
 /// `users`/`orders`/etc. tables other suites rely on.
 async fn raw_exec(driver: &MySqlDriver, sql: &str) {
-    query_service::execute_query(driver, sql)
+    exec(driver, sql)
         .await
         .expect("scratch table setup/teardown SQL failed");
 }
@@ -61,7 +73,11 @@ async fn render_ddl_add_column_produces_expected_sql() {
 async fn execute_ddl_add_and_drop_column_round_trips() {
     let driver = dev_driver().await;
     raw_exec(&driver, "drop table if exists ddl_col_test;").await;
-    raw_exec(&driver, "create table ddl_col_test (id int primary key auto_increment);").await;
+    raw_exec(
+        &driver,
+        "create table ddl_col_test (id int primary key auto_increment);",
+    )
+    .await;
 
     let add = vec![DdlStatement::AddColumn {
         table: "ddl_col_test".to_string(),
@@ -107,7 +123,11 @@ async fn execute_ddl_add_and_drop_column_round_trips() {
 async fn execute_ddl_batch_stops_at_failure_without_rollback() {
     let driver = dev_driver().await;
     raw_exec(&driver, "drop table if exists ddl_rollback_test;").await;
-    raw_exec(&driver, "create table ddl_rollback_test (id int primary key auto_increment);").await;
+    raw_exec(
+        &driver,
+        "create table ddl_rollback_test (id int primary key auto_increment);",
+    )
+    .await;
 
     let statements = vec![
         DdlStatement::AddColumn {
@@ -134,10 +154,23 @@ async fn execute_ddl_batch_stops_at_failure_without_rollback() {
         .await
         .expect("execute_ddl should not itself error");
 
-    assert!(!batch.rolled_back, "MySQL DDL can never report rolled_back: true");
-    assert_eq!(batch.results.len(), 2, "execution should stop after the failing statement");
-    assert!(batch.results[0].success, "first statement should have run before the failure");
-    assert!(!batch.results[1].success, "second statement should have failed");
+    assert!(
+        !batch.rolled_back,
+        "MySQL DDL can never report rolled_back: true"
+    );
+    assert_eq!(
+        batch.results.len(),
+        2,
+        "execution should stop after the failing statement"
+    );
+    assert!(
+        batch.results[0].success,
+        "first statement should have run before the failure"
+    );
+    assert!(
+        !batch.results[1].success,
+        "second statement should have failed"
+    );
 
     let columns = schema_service::get_table_columns(&driver, "devdb", "ddl_rollback_test")
         .await
@@ -154,7 +187,11 @@ async fn execute_ddl_batch_stops_at_failure_without_rollback() {
 async fn execute_ddl_alter_column_renames_and_changes_type() {
     let driver = dev_driver().await;
     raw_exec(&driver, "drop table if exists ddl_alter_test;").await;
-    raw_exec(&driver, "create table ddl_alter_test (id int primary key auto_increment, age varchar(255));").await;
+    raw_exec(
+        &driver,
+        "create table ddl_alter_test (id int primary key auto_increment, age varchar(255));",
+    )
+    .await;
 
     let statements = vec![DdlStatement::AlterColumn {
         table: "ddl_alter_test".to_string(),
@@ -177,7 +214,10 @@ async fn execute_ddl_alter_column_renames_and_changes_type() {
     let columns = schema_service::get_table_columns(&driver, "devdb", "ddl_alter_test")
         .await
         .expect("get_table_columns failed");
-    assert!(!columns.iter().any(|c| c.name == "age"), "old column name should be gone");
+    assert!(
+        !columns.iter().any(|c| c.name == "age"),
+        "old column name should be gone"
+    );
     let renamed = columns
         .iter()
         .find(|c| c.name == "years_old")
@@ -245,7 +285,11 @@ async fn execute_ddl_add_foreign_key_and_drop() {
     let driver = dev_driver().await;
     raw_exec(&driver, "drop table if exists ddl_fk_child;").await;
     raw_exec(&driver, "drop table if exists ddl_fk_parent;").await;
-    raw_exec(&driver, "create table ddl_fk_parent (id int primary key auto_increment);").await;
+    raw_exec(
+        &driver,
+        "create table ddl_fk_parent (id int primary key auto_increment);",
+    )
+    .await;
     raw_exec(
         &driver,
         "create table ddl_fk_child (id int primary key auto_increment, parent_id int);",
@@ -260,6 +304,8 @@ async fn execute_ddl_add_foreign_key_and_drop() {
             columns: vec!["parent_id".to_string()],
             referenced_table: Some("ddl_fk_parent".to_string()),
             referenced_columns: vec!["id".to_string()],
+            on_update: None,
+            on_delete: None,
             check_expression: None,
         },
     }];
@@ -271,7 +317,9 @@ async fn execute_ddl_add_foreign_key_and_drop() {
     let constraints = schema_service::list_constraints(&driver, "devdb", "ddl_fk_child")
         .await
         .expect("list_constraints failed");
-    assert!(constraints.iter().any(|c| c.name == "ddl_fk_child_parent_fk"));
+    assert!(constraints
+        .iter()
+        .any(|c| c.name == "ddl_fk_child_parent_fk"));
 
     let drop = vec![DdlStatement::DropConstraint {
         table: "ddl_fk_child".to_string(),
@@ -285,7 +333,9 @@ async fn execute_ddl_add_foreign_key_and_drop() {
     let constraints = schema_service::list_constraints(&driver, "devdb", "ddl_fk_child")
         .await
         .expect("list_constraints failed");
-    assert!(!constraints.iter().any(|c| c.name == "ddl_fk_child_parent_fk"));
+    assert!(!constraints
+        .iter()
+        .any(|c| c.name == "ddl_fk_child_parent_fk"));
 
     raw_exec(&driver, "drop table ddl_fk_child;").await;
     raw_exec(&driver, "drop table ddl_fk_parent;").await;
@@ -329,6 +379,8 @@ async fn execute_ddl_create_table_with_index_and_constraint() {
                 columns: vec!["id".to_string()],
                 referenced_table: None,
                 referenced_columns: vec![],
+                on_update: None,
+                on_delete: None,
                 check_expression: None,
             },
         },
@@ -361,12 +413,16 @@ async fn execute_ddl_create_table_with_index_and_constraint() {
     // MySQL always names primary key constraints "PRIMARY" regardless of
     // the name requested in ADD CONSTRAINT ... PRIMARY KEY — confirmed
     // directly against a live container, not a bug in our code.
-    assert!(constraints.iter().any(|c| c.kind == ConstraintKind::PrimaryKey && c.name == "PRIMARY"));
+    assert!(constraints
+        .iter()
+        .any(|c| c.kind == ConstraintKind::PrimaryKey && c.name == "PRIMARY"));
 
     let indexes = schema_service::list_indexes(&driver, "devdb", "ddl_create_test")
         .await
         .expect("list_indexes failed");
-    assert!(indexes.iter().any(|i| i.name == "ddl_create_test_email_idx"));
+    assert!(indexes
+        .iter()
+        .any(|i| i.name == "ddl_create_test_email_idx"));
 
     raw_exec(&driver, "drop table ddl_create_test;").await;
 }
@@ -376,7 +432,11 @@ async fn execute_ddl_rename_table() {
     let driver = dev_driver().await;
     raw_exec(&driver, "drop table if exists ddl_rename_test;").await;
     raw_exec(&driver, "drop table if exists ddl_rename_test_2;").await;
-    raw_exec(&driver, "create table ddl_rename_test (id int primary key auto_increment);").await;
+    raw_exec(
+        &driver,
+        "create table ddl_rename_test (id int primary key auto_increment);",
+    )
+    .await;
 
     let statements = vec![DdlStatement::RenameTable {
         table: "ddl_rename_test".to_string(),
@@ -387,7 +447,9 @@ async fn execute_ddl_rename_table() {
         .expect("rename table execute_ddl failed");
     assert!(batch.results[0].success, "{:?}", batch.results[0].error);
 
-    let tables = schema_service::list_tables(&driver).await.expect("list_tables failed");
+    let tables = schema_service::list_tables(&driver)
+        .await
+        .expect("list_tables failed");
     assert!(!tables.iter().any(|t| t.name == "ddl_rename_test"));
     assert!(tables.iter().any(|t| t.name == "ddl_rename_test_2"));
 
@@ -398,14 +460,120 @@ async fn execute_ddl_rename_table() {
 async fn execute_ddl_drop_table() {
     let driver = dev_driver().await;
     raw_exec(&driver, "drop table if exists ddl_drop_test;").await;
-    raw_exec(&driver, "create table ddl_drop_test (id int primary key auto_increment);").await;
+    raw_exec(
+        &driver,
+        "create table ddl_drop_test (id int primary key auto_increment);",
+    )
+    .await;
 
-    let statements = vec![DdlStatement::DropTable { table: "ddl_drop_test".to_string() }];
+    let statements = vec![DdlStatement::DropTable {
+        table: "ddl_drop_test".to_string(),
+    }];
     let batch = schema_service::execute_ddl(&driver, "devdb", &statements)
         .await
         .expect("drop table execute_ddl failed");
     assert!(batch.results[0].success, "{:?}", batch.results[0].error);
 
-    let tables = schema_service::list_tables(&driver).await.expect("list_tables failed");
+    let tables = schema_service::list_tables(&driver)
+        .await
+        .expect("list_tables failed");
     assert!(!tables.iter().any(|t| t.name == "ddl_drop_test"));
+}
+
+#[tokio::test]
+async fn execute_ddl_add_foreign_key_with_actions_and_read_back() {
+    let driver = dev_driver().await;
+    raw_exec(&driver, "drop table if exists ddl_fk_action_child;").await;
+    raw_exec(&driver, "drop table if exists ddl_fk_action_parent;").await;
+    raw_exec(&driver, "create table ddl_fk_action_parent (id int primary key auto_increment);").await;
+    raw_exec(
+        &driver,
+        "create table ddl_fk_action_child (id int primary key auto_increment, parent_id int);",
+    )
+    .await;
+
+    let add = vec![DdlStatement::AddConstraint {
+        table: "ddl_fk_action_child".to_string(),
+        constraint: NewConstraint {
+            name: "ddl_fk_action_child_parent_fk".to_string(),
+            kind: ConstraintKind::ForeignKey,
+            columns: vec!["parent_id".to_string()],
+            referenced_table: Some("ddl_fk_action_parent".to_string()),
+            referenced_columns: vec!["id".to_string()],
+            on_update: Some(ForeignKeyAction::SetNull),
+            on_delete: Some(ForeignKeyAction::Cascade),
+            check_expression: None,
+        },
+    }];
+
+    let preview = schema_service::render_ddl(&driver, "devdb", &add)
+        .await
+        .expect("render_ddl failed");
+    assert!(preview[0].sql.to_lowercase().contains("on update set null"));
+    assert!(preview[0].sql.to_lowercase().contains("on delete cascade"));
+
+    let batch = schema_service::execute_ddl(&driver, "devdb", &add)
+        .await
+        .expect("add foreign key execute_ddl failed");
+    assert!(batch.results[0].success, "{:?}", batch.results[0].error);
+
+    let constraints = schema_service::list_constraints(&driver, "devdb", "ddl_fk_action_child")
+        .await
+        .expect("list_constraints failed");
+    let fk = constraints
+        .iter()
+        .find(|c| c.name == "ddl_fk_action_child_parent_fk")
+        .expect("expected the new foreign key");
+    assert_eq!(fk.on_update, Some(ForeignKeyAction::SetNull));
+    assert_eq!(fk.on_delete, Some(ForeignKeyAction::Cascade));
+
+    raw_exec(&driver, "drop table ddl_fk_action_child;").await;
+    raw_exec(&driver, "drop table ddl_fk_action_parent;").await;
+}
+
+#[tokio::test]
+async fn execute_ddl_create_table_with_auto_increment_column() {
+    let driver = dev_driver().await;
+    raw_exec(&driver, "drop table if exists ddl_autoinc_test;").await;
+
+    let statements = vec![DdlStatement::CreateTable {
+        table: "ddl_autoinc_test".to_string(),
+        columns: vec![
+            NewColumn {
+                name: "id".to_string(),
+                data_type: "auto-increment".to_string(),
+                is_nullable: true,
+                default: None,
+            },
+            NewColumn {
+                name: "name".to_string(),
+                data_type: "varchar(255)".to_string(),
+                is_nullable: true,
+                default: None,
+            },
+        ],
+    }];
+
+    let preview = schema_service::render_ddl(&driver, "devdb", &statements)
+        .await
+        .expect("render_ddl failed");
+    assert!(preview[0].sql.contains("auto_increment"));
+    assert!(preview[0].sql.contains("primary key"));
+
+    let batch = schema_service::execute_ddl(&driver, "devdb", &statements)
+        .await
+        .expect("create table execute_ddl failed");
+    assert!(batch.results[0].success, "{:?}", batch.results[0].error);
+
+    raw_exec(&driver, "insert into ddl_autoinc_test (name) values ('a');").await;
+    raw_exec(&driver, "insert into ddl_autoinc_test (name) values ('b');").await;
+
+    let columns = schema_service::get_table_columns(&driver, "devdb", "ddl_autoinc_test")
+        .await
+        .expect("get_table_columns failed");
+    let id_col = columns.iter().find(|c| c.name == "id").expect("expected id column");
+    assert!(id_col.is_primary_key);
+    assert!(!id_col.is_nullable);
+
+    raw_exec(&driver, "drop table ddl_autoinc_test;").await;
 }

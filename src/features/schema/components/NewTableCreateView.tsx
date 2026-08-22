@@ -8,6 +8,7 @@ import { ColumnsTab, newColumnRow } from "@/src/features/schema/components/Colum
 import { ConstraintsTab, newConstraintRow } from "@/src/features/schema/components/ConstraintsTab";
 import { DdlPreviewDialog } from "@/src/features/schema/components/DdlPreviewDialog";
 import { IndexesTab, newIndexRow } from "@/src/features/schema/components/IndexesTab";
+import { capabilitiesFor } from "@/src/features/schema/capabilities";
 import { renderDdl, type DdlPreview, type DdlStatement } from "@/src/features/schema/api";
 import {
   emptyNewTableChanges,
@@ -15,16 +16,19 @@ import {
   toCreateTableStatements,
   type NewTableChanges,
 } from "@/src/features/schema/staging";
+import type { Engine } from "@/src/features/connections/types";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 
 interface NewTableCreateViewProps {
   connectionId: string;
+  engine: Engine;
   schema: string;
   onCreated: (tableName: string) => void;
   onCancel: () => void;
 }
 
-export function NewTableCreateView({ connectionId, schema, onCreated, onCancel }: NewTableCreateViewProps) {
+export function NewTableCreateView({ connectionId, engine, schema, onCreated, onCancel }: NewTableCreateViewProps) {
+  const capabilities = capabilitiesFor(engine);
   const [name, setName] = useState("");
   const [changes, setChanges] = useState<NewTableChanges>(emptyNewTableChanges());
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -115,6 +119,7 @@ export function NewTableCreateView({ connectionId, schema, onCreated, onCancel }
               droppedColumns={[]}
               editedColumns={[]}
               newColumns={changes.columns}
+              showAutoIncrement
               onToggleDrop={() => {}}
               onStartEdit={() => {}}
               onCancelEdit={() => {}}
@@ -163,6 +168,7 @@ export function NewTableCreateView({ connectionId, schema, onCreated, onCancel }
               connectionId={connectionId}
               schema={schema}
               table={name.trim() || "__new_table__"}
+              capabilities={capabilities}
               availableColumns={columnNames}
               constraints={[]}
               droppedConstraints={[]}

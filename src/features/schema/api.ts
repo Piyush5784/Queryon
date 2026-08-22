@@ -15,4 +15,5 @@ export {
   type NewIndex,
   type NewConstraint,
   type ColumnEdit,
+  type ForeignKeyAction,
 } from "@/src/lib/tauri/commands";

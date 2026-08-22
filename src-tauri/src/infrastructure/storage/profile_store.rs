@@ -96,6 +96,8 @@ mod tests {
             database: "devdb".to_string(),
             user: "devuser".to_string(),
             ssl_mode: SslMode::Disable,
+            read_only: false,
+            ssh_tunnel: None,
         }
     }
 

@@ -18,6 +18,8 @@ fn dev_profile() -> ConnectionProfile {
         user: "devuser".to_string(),
         password: "devpass".to_string(),
         ssl_mode: SslMode::Disable,
+        read_only: false,
+        ssh_tunnel: None,
     }
 }
 

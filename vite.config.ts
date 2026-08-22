@@ -16,13 +16,14 @@ export default defineConfig(async () => ({
   },
 
   build: {
-    chunkSizeWarningLimit: 650,
+    chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
         manualChunks: {
           "data-grid": ["@glideapps/glide-data-grid"],
           codemirror: ["@uiw/react-codemirror", "@codemirror/lang-sql", "@codemirror/view"],
           charts: ["recharts"],
+          "schema-graph": ["@xyflow/react", "@dagrejs/dagre"],
         },
       },
     },

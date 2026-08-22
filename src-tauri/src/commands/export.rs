@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Manager, State, Wry};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 
-use crate::domain::export::{service, RowsExportRequest, TableExportRequest};
+use crate::domain::export::{service, QueryExportRequest, RowsExportRequest, TableExportRequest};
 use crate::error::AppError;
 use crate::state::{ConnectionRegistry, ExportJobRegistry};
 
@@ -93,6 +93,32 @@ pub fn export_run_rows(
 
     tauri::async_runtime::spawn(async move {
         service::run_rows_export(app, job_id, request, cancel_flag).await;
+    });
+
+    Ok(())
+}
+
+/// Starts a background chunked export of a query tab's full result,
+/// re-running the SQL against the database with `LIMIT`/`OFFSET` per
+/// chunk rather than exporting whatever page is currently loaded in the
+/// results grid.
+#[tauri::command]
+#[specta::specta]
+pub fn export_run_query(
+    app: AppHandle<Wry>,
+    job_id: String,
+    request: QueryExportRequest,
+    connections: State<'_, ConnectionRegistry>,
+    jobs: State<'_, ExportJobRegistry>,
+) -> Result<(), AppError> {
+    let driver = connections
+        .get(&request.connection_id)
+        .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
+
+    let cancel_flag = jobs.register(job_id.clone());
+
+    tauri::async_runtime::spawn(async move {
+        service::run_query_export(app, job_id, request, driver, cancel_flag).await;
     });
 
     Ok(())

@@ -1,8 +1,21 @@
 use sqlx::mysql::MySqlPool;
 use sqlx::{AssertSqlSafe, Row};
 
-use crate::domain::schema::{ColumnInfo, ConstraintInfo, ConstraintKind, IndexInfo, TableRef};
+use crate::domain::schema::{
+    ColumnInfo, ConstraintInfo, ConstraintKind, ForeignKeyAction, IndexInfo, TableRef,
+};
 use crate::error::AppError;
+
+fn parse_foreign_key_action(rule: &str) -> Option<ForeignKeyAction> {
+    match rule.to_uppercase().as_str() {
+        "CASCADE" => Some(ForeignKeyAction::Cascade),
+        "SET NULL" => Some(ForeignKeyAction::SetNull),
+        "SET DEFAULT" => Some(ForeignKeyAction::SetDefault),
+        "RESTRICT" => Some(ForeignKeyAction::Restrict),
+        "NO ACTION" => Some(ForeignKeyAction::NoAction),
+        _ => None,
+    }
+}
 
 /// MySQL has no schema layer distinct from the database itself —
 /// `information_schema.tables.table_schema` is the database name the
@@ -35,7 +48,11 @@ pub async fn list_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableRe
         .into_iter()
         .map(|row| {
             let table_type: String = row.get("table_type");
-            let kind = if table_type == "VIEW" { "view" } else { "table" };
+            let kind = if table_type == "VIEW" {
+                "view"
+            } else {
+                "table"
+            };
             let estimated_rows: Option<i64> = row.try_get("table_rows").ok();
 
             TableRef {
@@ -48,10 +65,32 @@ pub async fn list_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableRe
         .collect())
 }
 
+/// MariaDB's `information_schema.columns.column_default` returns a
+/// quoted-string default still wrapped in literal single quotes with
+/// internal quotes doubled (e.g. `'it''s a test'`), where real MySQL
+/// returns the bare unescaped string (`it's a test`) for the identical
+/// `DEFAULT` clause — confirmed by testing both engines directly against
+/// the same `create table ... default 'it''s a test'`. Matches Beekeeper
+/// Studio's `MariaDBClient.resolveDefault`
+/// (`temp/apps/studio/src/lib/db/clients/mariadb.ts`). Only ever called
+/// when `is_mariadb` is true — MySQL's own output must never be touched.
+fn unquote_mariadb_default(value: Option<String>) -> Option<String> {
+    let value = value?;
+    if value.eq_ignore_ascii_case("null") {
+        return None;
+    }
+    if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
+        let inner = &value[1..value.len() - 1];
+        return Some(inner.replace("''", "'"));
+    }
+    Some(value)
+}
+
 pub async fn get_table_columns(
     pool: &MySqlPool,
     database: &str,
     table: &str,
+    is_mariadb: bool,
 ) -> Result<Vec<ColumnInfo>, AppError> {
     let rows = sqlx::query(
         r#"
@@ -89,11 +128,12 @@ pub async fn get_table_columns(
         .map(|row| {
             let is_primary_key: i64 = row.get("is_primary_key");
             let ordinal_position: u32 = row.get("ordinal_position");
+            let default: Option<String> = row.get("column_default");
             ColumnInfo {
                 name: row.get("column_name"),
                 data_type: row.get("data_type"),
                 is_nullable: row.get("is_nullable"),
-                default: row.get("column_default"),
+                default: if is_mariadb { unquote_mariadb_default(default) } else { default },
                 is_primary_key: is_primary_key != 0,
                 ordinal_position: ordinal_position as i32,
             }
@@ -101,7 +141,11 @@ pub async fn get_table_columns(
         .collect())
 }
 
-pub async fn list_indexes(pool: &MySqlPool, database: &str, table: &str) -> Result<Vec<IndexInfo>, AppError> {
+pub async fn list_indexes(
+    pool: &MySqlPool,
+    database: &str,
+    table: &str,
+) -> Result<Vec<IndexInfo>, AppError> {
     let rows = sqlx::query(
         r#"
         select
@@ -147,12 +191,18 @@ pub async fn list_constraints(
             tc.constraint_type as constraint_type,
             group_concat(distinct kcu.column_name order by kcu.ordinal_position) as columns,
             max(kcu.referenced_table_name) as referenced_table,
-            group_concat(distinct kcu.referenced_column_name order by kcu.ordinal_position) as referenced_columns
+            group_concat(distinct kcu.referenced_column_name order by kcu.ordinal_position) as referenced_columns,
+            max(rc.update_rule) as update_rule,
+            max(rc.delete_rule) as delete_rule
         from information_schema.table_constraints tc
         join information_schema.key_column_usage kcu
             on kcu.constraint_name = tc.constraint_name
             and kcu.table_schema = tc.table_schema
             and kcu.table_name = tc.table_name
+        left join information_schema.referential_constraints rc
+            on rc.constraint_name = tc.constraint_name
+            and rc.constraint_schema = tc.table_schema
+            and rc.table_name = tc.table_name
         where tc.table_schema = ? and tc.table_name = ?
             and tc.constraint_type in ('PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE')
         group by tc.constraint_name, tc.constraint_type
@@ -176,6 +226,9 @@ pub async fn list_constraints(
             };
             let columns: String = row.get("columns");
             let referenced_columns: Option<String> = row.try_get("referenced_columns").ok();
+            let is_fk = kind == ConstraintKind::ForeignKey;
+            let update_rule: Option<String> = row.try_get("update_rule").ok().flatten();
+            let delete_rule: Option<String> = row.try_get("delete_rule").ok().flatten();
             ConstraintInfo {
                 name: row.get("constraint_name"),
                 kind,
@@ -184,6 +237,12 @@ pub async fn list_constraints(
                 referenced_columns: referenced_columns
                     .map(|c| c.split(',').map(|s| s.to_string()).collect())
                     .unwrap_or_default(),
+                on_update: is_fk
+                    .then(|| update_rule.as_deref().and_then(parse_foreign_key_action))
+                    .flatten(),
+                on_delete: is_fk
+                    .then(|| delete_rule.as_deref().and_then(parse_foreign_key_action))
+                    .flatten(),
                 check_expression: None,
             }
         })
@@ -212,6 +271,8 @@ pub async fn list_constraints(
             columns: Vec::new(),
             referenced_table: None,
             referenced_columns: Vec::new(),
+            on_update: None,
+            on_delete: None,
             check_expression: row.get("check_clause"),
         });
     }
@@ -226,8 +287,8 @@ pub async fn get_table_ddl(pool: &MySqlPool, table: &str) -> Result<String, AppE
         .await
         .map_err(|e| AppError::new(format!("Failed to get table DDL: {e}")))?;
 
-    let ddl: String = row.try_get("Create Table").map_err(|e| {
-        AppError::new(format!("Unexpected response reading table DDL: {e}"))
-    })?;
+    let ddl: String = row
+        .try_get("Create Table")
+        .map_err(|e| AppError::new(format!("Unexpected response reading table DDL: {e}")))?;
     Ok(ddl)
 }

@@ -1,7 +1,10 @@
 use sqlx::mysql::MySqlPool;
 use sqlx::AssertSqlSafe;
 
-use crate::domain::schema::{ColumnEdit, ConstraintKind, DdlBatchResult, DdlExecutionResult, DdlPreview, DdlStatement, NewColumn, NewConstraint, NewIndex};
+use crate::domain::schema::{
+    ColumnEdit, ConstraintKind, DdlBatchResult, DdlExecutionResult, DdlPreview, DdlStatement,
+    ForeignKeyAction, NewColumn, NewConstraint, NewIndex, AUTO_INCREMENT_TYPE,
+};
 use crate::error::AppError;
 
 fn quote_ident(ident: &str) -> String {
@@ -12,26 +15,61 @@ fn clean_mysql_error(err: &sqlx::Error) -> String {
     crate::error::describe_mysql_error(err)
 }
 
+/// MySQL requires an auto_increment column to be declared a key in the
+/// same `CREATE TABLE` — it cannot be added as a separate `ALTER TABLE
+/// ADD CONSTRAINT` afterward (confirmed live: attempting that fails with
+/// "Incorrect table definition; there can be only one auto column and it
+/// must be defined as a key"). Declaring `primary key` inline in the
+/// column definition itself, rather than as a separate statement, is a
+/// shape MySQL genuinely allows and is what this pseudo-type resolves
+/// to. `is_nullable`/`default` are ignored, same reasoning as Postgres's
+/// `serial` — an auto-increment key is implicitly NOT NULL and its
+/// "default" is the auto-increment sequence itself.
 fn render_column_def(column: &NewColumn) -> String {
+    if column.data_type == AUTO_INCREMENT_TYPE {
+        return format!("{} int not null auto_increment primary key", quote_ident(&column.name));
+    }
     let nullability = if column.is_nullable { "" } else { " not null" };
     let default = column
         .default
         .as_ref()
         .map(|d| format!(" default {d}"))
         .unwrap_or_default();
-    format!("{} {}{}{}", quote_ident(&column.name), column.data_type, nullability, default)
+    format!(
+        "{} {}{}{}",
+        quote_ident(&column.name),
+        column.data_type,
+        nullability,
+        default
+    )
 }
 
-fn render_create_table(_schema: &str, table: &str, columns: &[NewColumn]) -> Result<String, AppError> {
+fn render_create_table(
+    _schema: &str,
+    table: &str,
+    columns: &[NewColumn],
+) -> Result<String, AppError> {
     if columns.is_empty() {
         return Err(AppError::new("A table needs at least one column."));
     }
-    let column_defs = columns.iter().map(render_column_def).collect::<Vec<_>>().join(", ");
-    Ok(format!("create table {} ({});", quote_ident(table), column_defs))
+    let column_defs = columns
+        .iter()
+        .map(render_column_def)
+        .collect::<Vec<_>>()
+        .join(", ");
+    Ok(format!(
+        "create table {} ({});",
+        quote_ident(table),
+        column_defs
+    ))
 }
 
 fn render_rename_table(_schema: &str, table: &str, new_name: &str) -> String {
-    format!("rename table {} to {};", quote_ident(table), quote_ident(new_name))
+    format!(
+        "rename table {} to {};",
+        quote_ident(table),
+        quote_ident(new_name)
+    )
 }
 
 fn render_drop_table(_schema: &str, table: &str) -> String {
@@ -39,11 +77,19 @@ fn render_drop_table(_schema: &str, table: &str) -> String {
 }
 
 fn render_add_column(_schema: &str, table: &str, column: &NewColumn) -> String {
-    format!("alter table {} add column {};", quote_ident(table), render_column_def(column))
+    format!(
+        "alter table {} add column {};",
+        quote_ident(table),
+        render_column_def(column)
+    )
 }
 
 fn render_drop_column(_schema: &str, table: &str, column: &str) -> String {
-    format!("alter table {} drop column {};", quote_ident(table), quote_ident(column))
+    format!(
+        "alter table {} drop column {};",
+        quote_ident(table),
+        quote_ident(column)
+    )
 }
 
 /// MySQL has no separate clauses for type/nullability/default the way
@@ -51,7 +97,11 @@ fn render_drop_column(_schema: &str, table: &str, column: &str) -> String {
 /// restates the entire column in one go, renaming it in the same
 /// statement if the name changed (or repeating the same name if not).
 fn render_alter_column(_schema: &str, table: &str, edit: &ColumnEdit) -> String {
-    let nullability = if edit.column.is_nullable { "" } else { " not null" };
+    let nullability = if edit.column.is_nullable {
+        ""
+    } else {
+        " not null"
+    };
     let default = edit
         .column
         .default
@@ -75,7 +125,12 @@ fn render_alter_column(_schema: &str, table: &str, edit: &ColumnEdit) -> String 
 /// Postgres's `drop index schema.name` does not.
 fn render_add_index(_schema: &str, table: &str, index: &NewIndex) -> String {
     let unique = if index.is_unique { "unique " } else { "" };
-    let cols = index.columns.iter().map(|c| quote_ident(c)).collect::<Vec<_>>().join(", ");
+    let cols = index
+        .columns
+        .iter()
+        .map(|c| quote_ident(c))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         "alter table {} add {unique}index {} ({});",
         quote_ident(table),
@@ -85,11 +140,34 @@ fn render_add_index(_schema: &str, table: &str, index: &NewIndex) -> String {
 }
 
 fn render_drop_index(_schema: &str, table: &str, index: &str) -> String {
-    format!("alter table {} drop index {};", quote_ident(table), quote_ident(index))
+    format!(
+        "alter table {} drop index {};",
+        quote_ident(table),
+        quote_ident(index)
+    )
 }
 
-fn render_add_constraint(_schema: &str, table: &str, constraint: &NewConstraint) -> Result<String, AppError> {
-    let cols = constraint.columns.iter().map(|c| quote_ident(c)).collect::<Vec<_>>().join(", ");
+fn render_foreign_key_action(action: ForeignKeyAction) -> &'static str {
+    match action {
+        ForeignKeyAction::NoAction => "no action",
+        ForeignKeyAction::Restrict => "restrict",
+        ForeignKeyAction::Cascade => "cascade",
+        ForeignKeyAction::SetNull => "set null",
+        ForeignKeyAction::SetDefault => "set default",
+    }
+}
+
+fn render_add_constraint(
+    _schema: &str,
+    table: &str,
+    constraint: &NewConstraint,
+) -> Result<String, AppError> {
+    let cols = constraint
+        .columns
+        .iter()
+        .map(|c| quote_ident(c))
+        .collect::<Vec<_>>()
+        .join(", ");
     let clause = match constraint.kind {
         ConstraintKind::PrimaryKey => format!("primary key ({cols})"),
         ConstraintKind::Unique => format!("unique ({cols})"),
@@ -104,7 +182,18 @@ fn render_add_constraint(_schema: &str, table: &str, constraint: &NewConstraint)
                 .map(|c| quote_ident(c))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("foreign key ({cols}) references {} ({ref_cols})", quote_ident(ref_table))
+            let on_update = constraint
+                .on_update
+                .map(|a| format!(" on update {}", render_foreign_key_action(a)))
+                .unwrap_or_default();
+            let on_delete = constraint
+                .on_delete
+                .map(|a| format!(" on delete {}", render_foreign_key_action(a)))
+                .unwrap_or_default();
+            format!(
+                "foreign key ({cols}) references {} ({ref_cols}){on_update}{on_delete}",
+                quote_ident(ref_table)
+            )
         }
         ConstraintKind::Check => {
             let expr = constraint
@@ -122,7 +211,11 @@ fn render_add_constraint(_schema: &str, table: &str, constraint: &NewConstraint)
     ))
 }
 
-fn render_drop_constraint(_schema: &str, table: &str, constraint: &DdlDropConstraintKindHint) -> String {
+fn render_drop_constraint(
+    _schema: &str,
+    table: &str,
+    constraint: &DdlDropConstraintKindHint,
+) -> String {
     match constraint.kind {
         ConstraintKind::ForeignKey => {
             format!(
@@ -167,14 +260,18 @@ pub fn render(
 ) -> Result<String, AppError> {
     match statement {
         DdlStatement::CreateTable { table, columns } => render_create_table(schema, table, columns),
-        DdlStatement::RenameTable { table, new_name } => Ok(render_rename_table(schema, table, new_name)),
+        DdlStatement::RenameTable { table, new_name } => {
+            Ok(render_rename_table(schema, table, new_name))
+        }
         DdlStatement::DropTable { table } => Ok(render_drop_table(schema, table)),
         DdlStatement::AddColumn { table, column } => Ok(render_add_column(schema, table, column)),
         DdlStatement::DropColumn { table, column } => Ok(render_drop_column(schema, table, column)),
         DdlStatement::AlterColumn { table, edit } => Ok(render_alter_column(schema, table, edit)),
         DdlStatement::AddIndex { table, index } => Ok(render_add_index(schema, table, index)),
         DdlStatement::DropIndex { table, index } => Ok(render_drop_index(schema, table, index)),
-        DdlStatement::AddConstraint { table, constraint } => render_add_constraint(schema, table, constraint),
+        DdlStatement::AddConstraint { table, constraint } => {
+            render_add_constraint(schema, table, constraint)
+        }
         DdlStatement::DropConstraint { table, constraint } => {
             let hint = drop_constraint_kind.ok_or_else(|| {
                 AppError::new(format!(
@@ -216,27 +313,46 @@ pub async fn execute_all(
         let hint = match resolve_drop_constraint_hint(pool, schema, statement).await {
             Ok(hint) => hint,
             Err(e) => {
-                results.push(DdlExecutionResult { sql: String::new(), success: false, error: Some(e.to_string()) });
+                results.push(DdlExecutionResult {
+                    sql: String::new(),
+                    success: false,
+                    error: Some(e.to_string()),
+                });
                 break;
             }
         };
         let sql = match render(schema, statement, hint.as_ref()) {
             Ok(sql) => sql,
             Err(e) => {
-                results.push(DdlExecutionResult { sql: String::new(), success: false, error: Some(e.to_string()) });
+                results.push(DdlExecutionResult {
+                    sql: String::new(),
+                    success: false,
+                    error: Some(e.to_string()),
+                });
                 break;
             }
         };
 
         match sqlx::query(AssertSqlSafe(sql.clone())).execute(pool).await {
-            Ok(_) => results.push(DdlExecutionResult { sql, success: true, error: None }),
+            Ok(_) => results.push(DdlExecutionResult {
+                sql,
+                success: true,
+                error: None,
+            }),
             Err(e) => {
-                results.push(DdlExecutionResult { sql, success: false, error: Some(clean_mysql_error(&e)) });
+                results.push(DdlExecutionResult {
+                    sql,
+                    success: false,
+                    error: Some(clean_mysql_error(&e)),
+                });
                 break;
             }
         }
     }
-    Ok(DdlBatchResult { results, rolled_back: false })
+    Ok(DdlBatchResult {
+        results,
+        rolled_back: false,
+    })
 }
 
 async fn resolve_drop_constraint_hint(
@@ -249,5 +365,8 @@ async fn resolve_drop_constraint_hint(
     };
     let constraints = super::metadata::list_constraints(pool, schema, table).await?;
     let matching = constraints.into_iter().find(|c| &c.name == constraint);
-    Ok(matching.map(|c| DdlDropConstraintKindHint { name: c.name, kind: c.kind }))
+    Ok(matching.map(|c| DdlDropConstraintKindHint {
+        name: c.name,
+        kind: c.kind,
+    }))
 }

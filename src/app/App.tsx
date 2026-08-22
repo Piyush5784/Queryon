@@ -7,14 +7,28 @@ import {
   listSavedConnections,
 } from "@/src/features/connections/api";
 import { ConnectionDialog } from "@/src/features/connections/components/ConnectionDialog";
-import type { ConnectionProfile, SavedConnectionProfile } from "@/src/features/connections/types";
+import { engineOf, type ConnectionProfile, type SavedConnectionProfile } from "@/src/features/connections/types";
 import type { SavedQuery } from "@/src/features/query/api";
+import { isTabRunning } from "@/src/features/query/runningTabs";
 import { createQueryTabId } from "@/src/features/query/types";
 import { tableTabId } from "@/src/features/tables/types";
 import { AppLayout } from "@/src/layouts/AppLayout";
 import { ThemeProvider } from "@/src/app/components/theme-provider";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/src/app/components/ui/alert-dialog";
+import { Toaster } from "@/src/app/components/ui/toast";
 import type { AppTab } from "@/src/app/tabs";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
+import { AlertTriangle } from "lucide-react";
 import "@/src/app/styles/globals.css";
 
 function hashSql(sql: string): string {
@@ -36,6 +50,7 @@ function App() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [showHome, setShowHome] = useState(true);
   const [queryRefreshToken, setQueryRefreshToken] = useState(0);
+  const [closeTabConfirmId, setCloseTabConfirmId] = useState<string | null>(null);
 
   const activeConnection = connections.find((c) => c.id === activeConnectionId) ?? null;
 
@@ -93,12 +108,14 @@ function App() {
 
   function handleOpenTable(connectionId: string, schema: string, table: string) {
     const id = tableTabId(connectionId, schema, table);
-    const connectionName = connections.find((c) => c.id === connectionId)?.name ?? "";
+    const connection = connections.find((c) => c.id === connectionId);
+    const connectionName = connection?.name ?? "";
+    const engine = engineOf(connection ?? {});
 
     setTabs((prev) =>
       prev.some((t) => t.id === id)
         ? prev
-        : [...prev, { type: "table", id, connectionId, connectionName, schema, table }]
+        : [...prev, { type: "table", id, connectionId, connectionName, engine, schema, table }]
     );
     setActiveTabId(id);
     setShowHome(false);
@@ -141,7 +158,7 @@ function App() {
     setShowHome(false);
   }
 
-  function handleCloseTab(id: string) {
+  function closeTab(id: string) {
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== id);
       if (activeTabId === id) {
@@ -151,8 +168,17 @@ function App() {
     });
   }
 
+  function handleCloseTab(id: string) {
+    if (isTabRunning(id)) {
+      setCloseTabConfirmId(id);
+      return;
+    }
+    closeTab(id);
+  }
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="queryon-theme">
+      <Toaster>
       <div className="h-full">
         <AppLayout
           connections={connections}
@@ -184,7 +210,39 @@ function App() {
           onOpenChange={setDialogOpen}
           onConnected={handleConnected}
         />
+
+        <AlertDialog
+          open={closeTabConfirmId !== null}
+          onOpenChange={(next) => !next && setCloseTabConfirmId(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogMedia className="bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <AlertTriangle />
+              </AlertDialogMedia>
+              <AlertDialogTitle>Close tab while query is running?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This tab has a query still running. Closing it now will cancel the query, or leave
+                it half-performed if it can't be cancelled in time.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep tab open</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  if (closeTabConfirmId) closeTab(closeTabConfirmId);
+                  setCloseTabConfirmId(null);
+                }}
+              >
+                Close anyway
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
+      </Toaster>
     </ThemeProvider>
   );
 }

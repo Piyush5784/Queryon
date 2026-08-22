@@ -3,10 +3,7 @@ import { Download } from "lucide-react";
 
 import { Button } from "@/src/app/components/ui/button";
 import { ExportDialog } from "@/src/components/ExportDialog";
-
-type ExportTarget =
-  | { kind: "table"; connectionId: string; schema: string; table: string }
-  | { kind: "rows"; columns: string[]; rows: string[][] };
+import type { ExportTarget } from "@/src/components/exportTypes";
 
 interface ExportButtonProps {
   target: ExportTarget;
@@ -17,7 +14,10 @@ interface ExportButtonProps {
 export function ExportButton({ target, fileBaseName, disabled }: ExportButtonProps) {
   const [open, setOpen] = useState(false);
 
-  const isDisabled = disabled || (target.kind === "rows" && target.rows.length === 0);
+  const isDisabled =
+    disabled ||
+    (target.kind === "rows" && target.rows.length === 0) ||
+    (target.kind === "query" && target.page.rows.length === 0);
 
   return (
     <>

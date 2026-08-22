@@ -41,4 +41,5 @@ async-trait = "0.1"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "mysql", "chrono", "json", "rust_decimal"] }
 rust_decimal = "1"
 tauri-plugin-dialog = "2"
+russh = "0.63.0"
 

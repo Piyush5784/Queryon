@@ -33,6 +33,38 @@ pub fn delete_password(connection_id: &str) -> Result<(), AppError> {
     }
 }
 
+/// The SSH password or private-key passphrase, kept under a separate
+/// keychain entry from the database password (`entry(connection_id)`
+/// above) — a connection can have both a DB password and an SSH secret
+/// at once, so they can't share one slot.
+fn ssh_secret_key(connection_id: &str) -> String {
+    format!("{connection_id}-ssh")
+}
+
+pub fn save_ssh_secret(connection_id: &str, secret: &str) -> Result<(), AppError> {
+    entry(&ssh_secret_key(connection_id))?
+        .set_password(secret)
+        .map_err(|e| AppError::new(format!("Could not save SSH credentials to the system keychain: {e}")))
+}
+
+pub fn load_ssh_secret(connection_id: &str) -> Result<String, AppError> {
+    entry(&ssh_secret_key(connection_id))?.get_password().map_err(|e| match e {
+        keyring::Error::NoEntry => AppError::new(
+            "No saved SSH credentials found for this connection — reconnect and save it again.",
+        ),
+        other => AppError::new(format!("Could not read SSH credentials from the system keychain: {other}")),
+    })
+}
+
+pub fn delete_ssh_secret(connection_id: &str) -> Result<(), AppError> {
+    match entry(&ssh_secret_key(connection_id))?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(AppError::new(format!(
+            "Could not delete SSH credentials from the system keychain: {e}"
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

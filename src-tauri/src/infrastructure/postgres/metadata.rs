@@ -1,7 +1,36 @@
 use deadpool_postgres::Client;
 
-use crate::domain::schema::{ColumnInfo, ConstraintInfo, ConstraintKind, IndexInfo, TableRef};
+use crate::domain::schema::{
+    ColumnInfo, ConstraintInfo, ConstraintKind, ForeignKeyAction, IndexInfo, TableRef,
+};
 use crate::error::{describe_pg_error, AppError};
+
+/// `pg_get_constraintdef` renders a foreign key's referential actions as
+/// literal ` ON UPDATE <action>`/` ON DELETE <action>` suffixes on the
+/// definition text (e.g. `FOREIGN KEY (x) REFERENCES y(id) ON UPDATE SET
+/// NULL ON DELETE CASCADE`), always in that order, entirely absent when
+/// unset — confirmed against a live container rather than assumed from
+/// docs. There is no separate metadata column for this, so parsing the
+/// definition text is the only way to recover it.
+fn parse_foreign_key_action(definition: &str, clause: &str) -> Option<ForeignKeyAction> {
+    let upper = definition.to_uppercase();
+    let marker = format!("ON {clause} ");
+    let start = upper.find(&marker)? + marker.len();
+    let rest = &upper[start..];
+    if rest.starts_with("CASCADE") {
+        Some(ForeignKeyAction::Cascade)
+    } else if rest.starts_with("SET NULL") {
+        Some(ForeignKeyAction::SetNull)
+    } else if rest.starts_with("SET DEFAULT") {
+        Some(ForeignKeyAction::SetDefault)
+    } else if rest.starts_with("RESTRICT") {
+        Some(ForeignKeyAction::Restrict)
+    } else if rest.starts_with("NO ACTION") {
+        Some(ForeignKeyAction::NoAction)
+    } else {
+        None
+    }
+}
 
 pub async fn list_tables(client: &Client) -> Result<Vec<TableRef>, AppError> {
     let rows = client
@@ -83,12 +112,21 @@ pub async fn get_table_columns(
             is_nullable: row.get("is_nullable"),
             default: row.get("column_default"),
             is_primary_key: row.get("is_primary_key"),
-            ordinal_position: row.get("ordinal_position"),
+            // Real Postgres reports `ordinal_position::int` as `int4` on
+            // the wire, but CockroachDB's `information_schema` shim
+            // reports it as `int8` even after the same cast — reading
+            // as i64 and narrowing works correctly for both engines
+            // rather than special-casing the query per engine.
+            ordinal_position: row.get::<_, i64>("ordinal_position") as i32,
         })
         .collect())
 }
 
-pub async fn list_indexes(client: &Client, schema: &str, table: &str) -> Result<Vec<IndexInfo>, AppError> {
+pub async fn list_indexes(
+    client: &Client,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<IndexInfo>, AppError> {
     let rows = client
         .query(
             r#"
@@ -161,7 +199,12 @@ pub async fn list_constraints(
             &[&schema, &table],
         )
         .await
-        .map_err(|e| AppError::new(format!("Failed to list constraints: {}", describe_pg_error(&e))))?;
+        .map_err(|e| {
+            AppError::new(format!(
+                "Failed to list constraints: {}",
+                describe_pg_error(&e)
+            ))
+        })?;
 
     Ok(rows
         .into_iter()
@@ -174,12 +217,19 @@ pub async fn list_constraints(
                 _ => ConstraintKind::Check,
             };
             let definition: String = row.get("definition");
+            let is_fk = kind == ConstraintKind::ForeignKey;
             ConstraintInfo {
                 name: row.get("constraint_name"),
                 kind,
                 columns: row.get("columns"),
                 referenced_table: row.get("referenced_table"),
                 referenced_columns: row.get("referenced_columns"),
+                on_update: is_fk
+                    .then(|| parse_foreign_key_action(&definition, "UPDATE"))
+                    .flatten(),
+                on_delete: is_fk
+                    .then(|| parse_foreign_key_action(&definition, "DELETE"))
+                    .flatten(),
                 check_expression: if kind == ConstraintKind::Check {
                     Some(definition)
                 } else {
@@ -193,7 +243,9 @@ pub async fn list_constraints(
 pub async fn get_table_ddl(client: &Client, schema: &str, table: &str) -> Result<String, AppError> {
     let columns = get_table_columns(client, schema, table).await?;
     if columns.is_empty() {
-        return Err(AppError::new(format!("Table '{schema}.{table}' not found.")));
+        return Err(AppError::new(format!(
+            "Table '{schema}.{table}' not found."
+        )));
     }
 
     let column_lines: Vec<String> = columns
@@ -205,7 +257,13 @@ pub async fn get_table_ddl(client: &Client, schema: &str, table: &str) -> Result
                 .as_ref()
                 .map(|d| format!(" default {d}"))
                 .unwrap_or_default();
-            format!("    {} {}{}{}", quote_ident(&c.name), c.data_type, nullability, default)
+            format!(
+                "    {} {}{}{}",
+                quote_ident(&c.name),
+                c.data_type,
+                nullability,
+                default
+            )
         })
         .collect();
 
@@ -221,7 +279,11 @@ pub async fn get_table_ddl(client: &Client, schema: &str, table: &str) -> Result
                 .join(", ");
             match c.kind {
                 ConstraintKind::PrimaryKey => {
-                    format!("    constraint {} primary key ({})", quote_ident(&c.name), cols)
+                    format!(
+                        "    constraint {} primary key ({})",
+                        quote_ident(&c.name),
+                        cols
+                    )
                 }
                 ConstraintKind::Unique => {
                     format!("    constraint {} unique ({})", quote_ident(&c.name), cols)
@@ -262,7 +324,12 @@ pub async fn get_table_ddl(client: &Client, schema: &str, table: &str) -> Result
         .filter(|i| !i.is_primary)
         .map(|i| {
             let unique = if i.is_unique { "unique " } else { "" };
-            let cols = i.columns.iter().map(|c| quote_ident(c)).collect::<Vec<_>>().join(", ");
+            let cols = i
+                .columns
+                .iter()
+                .map(|c| quote_ident(c))
+                .collect::<Vec<_>>()
+                .join(", ");
             format!(
                 "create {unique}index {} on {}.{} ({});",
                 quote_ident(&i.name),

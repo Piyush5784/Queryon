@@ -39,6 +39,20 @@ pub enum ConstraintKind {
     Check,
 }
 
+/// A foreign key's referential action — what happens to a dependent row
+/// when the referenced row is updated or deleted. Both engines support
+/// the same five values with the same names, so this is one shared enum
+/// rather than a per-engine type.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ForeignKeyAction {
+    NoAction,
+    Restrict,
+    Cascade,
+    SetNull,
+    SetDefault,
+}
+
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ConstraintInfo {
@@ -49,17 +63,37 @@ pub struct ConstraintInfo {
     /// positionally matched to `columns`.
     pub referenced_table: Option<String>,
     pub referenced_columns: Vec<String>,
+    /// Set only for `ForeignKey`. `None` reads as the engine's own
+    /// default (`NO ACTION` on both Postgres and MySQL) rather than
+    /// `Some(NoAction)` — the two engines report an unset action
+    /// differently, and downstream code should treat "unset" and
+    /// "explicitly NO ACTION" the same way either way.
+    pub on_update: Option<ForeignKeyAction>,
+    pub on_delete: Option<ForeignKeyAction>,
     /// Set only for `Check` — the constraint's boolean expression, as the
     /// engine reports it back (already-normalized text, not necessarily
     /// what the user originally typed).
     pub check_expression: Option<String>,
 }
 
+/// A synthetic `data_type` value the frontend's type picker can submit
+/// instead of a real engine type string. Neither engine has a literal
+/// type called this — each `ddl.rs` resolves it into its own dialect's
+/// real auto-incrementing-primary-key column definition at render time
+/// (`serial` on Postgres; `int not null auto_increment primary key`,
+/// all in the column definition itself, on MySQL — MySQL requires an
+/// auto_increment column to be declared a key in the same `CREATE
+/// TABLE`, so the primary key lives inline rather than as a separate
+/// constraint statement). See Beekeeper Studio's own `autoincrement`
+/// pseudo-type for the same pattern in a 15-engine client.
+pub const AUTO_INCREMENT_TYPE: &str = "auto-increment";
+
 /// A new column's definition, as submitted from the frontend's "Add
 /// column" form. `data_type` is a raw engine-dialect type string (e.g.
 /// `text`, `varchar(255)`, `int8`) — not validated against a fixed enum,
 /// since the set of valid types differs per engine and this app doesn't
-/// maintain its own type catalog.
+/// maintain its own type catalog — with one synthetic exception, see
+/// `AUTO_INCREMENT_TYPE`.
 #[derive(Debug, Clone, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct NewColumn {
@@ -91,6 +125,10 @@ pub struct NewConstraint {
     pub columns: Vec<String>,
     pub referenced_table: Option<String>,
     pub referenced_columns: Vec<String>,
+    /// Set only for `ForeignKey`. `None` renders as the engine default
+    /// (no explicit ON UPDATE/ON DELETE clause, i.e. NO ACTION).
+    pub on_update: Option<ForeignKeyAction>,
+    pub on_delete: Option<ForeignKeyAction>,
     pub check_expression: Option<String>,
 }
 
@@ -122,17 +160,46 @@ pub struct ColumnEdit {
 #[derive(Debug, Clone, Deserialize, Type)]
 #[serde(rename_all = "camelCase", tag = "op")]
 pub enum DdlStatement {
-    CreateTable { table: String, columns: Vec<NewColumn> },
+    CreateTable {
+        table: String,
+        columns: Vec<NewColumn>,
+    },
     #[serde(rename_all = "camelCase")]
-    RenameTable { table: String, new_name: String },
-    DropTable { table: String },
-    AddColumn { table: String, column: NewColumn },
-    DropColumn { table: String, column: String },
-    AlterColumn { table: String, edit: ColumnEdit },
-    AddIndex { table: String, index: NewIndex },
-    DropIndex { table: String, index: String },
-    AddConstraint { table: String, constraint: NewConstraint },
-    DropConstraint { table: String, constraint: String },
+    RenameTable {
+        table: String,
+        new_name: String,
+    },
+    DropTable {
+        table: String,
+    },
+    AddColumn {
+        table: String,
+        column: NewColumn,
+    },
+    DropColumn {
+        table: String,
+        column: String,
+    },
+    AlterColumn {
+        table: String,
+        edit: ColumnEdit,
+    },
+    AddIndex {
+        table: String,
+        index: NewIndex,
+    },
+    DropIndex {
+        table: String,
+        index: String,
+    },
+    AddConstraint {
+        table: String,
+        constraint: NewConstraint,
+    },
+    DropConstraint {
+        table: String,
+        constraint: String,
+    },
 }
 
 /// One rendered statement plus the raw SQL that will run for it — what

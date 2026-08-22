@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use serde_json::Value as JsonValue;
 use sqlx::mysql::MySqlPool;
-use sqlx::Row;
+use sqlx::pool::PoolConnection;
+use sqlx::{MySql, Row};
 
 use crate::domain::driver::DatabaseDriver;
 use crate::domain::query::RawQueryResult;
@@ -19,11 +21,70 @@ const MAX_PAGE_SIZE: i64 = 10_000;
 pub struct MySqlDriver {
     pool: MySqlPool,
     database: String,
+    /// True for `Engine::MariaDb` connections — the wire protocol and
+    /// catalog tables are otherwise identical to MySQL, but
+    /// `information_schema.columns.column_default` needs unquoting on
+    /// MariaDB specifically (see `metadata::unquote_mariadb_default`).
+    is_mariadb: bool,
+    /// One dedicated connection per tab in manual-commit mode, checked
+    /// out of the pool and held for the life of that tab's transaction
+    /// rather than returned after each call — same reasoning as
+    /// Postgres's `reserved` field, see its doc comment.
+    reserved: Mutex<HashMap<String, PoolConnection<MySql>>>,
+    /// The connection id of whichever connection `tab_id` currently has
+    /// a query running on — same purpose as Postgres's `running_pids`,
+    /// see its doc comment. `cancel_query` runs `KILL QUERY <id>` on a
+    /// separate connection to interrupt it.
+    running_ids: Mutex<HashMap<String, u32>>,
 }
 
 impl MySqlDriver {
     pub fn new(pool: MySqlPool, database: String) -> Self {
-        Self { pool, database }
+        Self {
+            pool,
+            database,
+            is_mariadb: false,
+            reserved: Mutex::new(HashMap::new()),
+            running_ids: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn new_mariadb(pool: MySqlPool, database: String) -> Self {
+        Self {
+            pool,
+            database,
+            is_mariadb: true,
+            reserved: Mutex::new(HashMap::new()),
+            running_ids: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Runs `sql` on `conn`, first recording `conn`'s MySQL connection id
+    /// under `tab_id` so a concurrent `cancel_query(tab_id)` call can
+    /// find it, then clearing that record once the query settles either
+    /// way.
+    async fn execute_query_trackable(
+        &self,
+        tab_id: &str,
+        conn: &mut PoolConnection<MySql>,
+        sql: &str,
+        offset: u64,
+        limit: u64,
+    ) -> Result<RawQueryResult, AppError> {
+        let id_row = sqlx::query("SELECT connection_id() AS id")
+            .fetch_one(&mut **conn)
+            .await
+            .map_err(|e| AppError::new(crate::error::describe_mysql_error(&e)))?;
+        let connection_id: u32 = id_row
+            .try_get::<u64, _>("id")
+            .map(|id| id as u32)
+            .map_err(|e| AppError::new(format!("Could not read connection id: {e}")))?;
+        self.running_ids.lock().unwrap().insert(tab_id.to_string(), connection_id);
+
+        let result = executor::execute_query(&mut **conn, sql, offset, limit).await;
+
+        self.running_ids.lock().unwrap().remove(tab_id);
+        result
     }
 }
 
@@ -152,16 +213,21 @@ impl DatabaseDriver for MySqlDriver {
             .fetch_one(&self.pool)
             .await
             .map_err(|e| AppError::new(format!("Connected, but failed to query server: {e}")))?;
-        row.try_get::<String, _>(0)
-            .map_err(|e| AppError::new(format!("Connected, but failed to read server version: {e}")))
+        row.try_get::<String, _>(0).map_err(|e| {
+            AppError::new(format!("Connected, but failed to read server version: {e}"))
+        })
     }
 
     async fn list_tables(&self) -> Result<Vec<TableRef>, AppError> {
         metadata::list_tables(&self.pool, &self.database).await
     }
 
-    async fn get_table_columns(&self, schema: &str, table: &str) -> Result<Vec<ColumnInfo>, AppError> {
-        metadata::get_table_columns(&self.pool, schema, table).await
+    async fn get_table_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ColumnInfo>, AppError> {
+        metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb).await
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, AppError> {
@@ -170,13 +236,21 @@ impl DatabaseDriver for MySqlDriver {
         metadata::list_indexes(&self.pool, schema, table).await
     }
 
-    async fn list_constraints(&self, schema: &str, table: &str) -> Result<Vec<ConstraintInfo>, AppError> {
+    async fn list_constraints(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ConstraintInfo>, AppError> {
         validate_identifier(schema)?;
         validate_identifier(table)?;
         metadata::list_constraints(&self.pool, schema, table).await
     }
 
-    async fn render_ddl(&self, schema: &str, statements: &[DdlStatement]) -> Result<Vec<DdlPreview>, AppError> {
+    async fn render_ddl(
+        &self,
+        schema: &str,
+        statements: &[DdlStatement],
+    ) -> Result<Vec<DdlPreview>, AppError> {
         validate_identifier(schema)?;
         for statement in statements {
             validate_ddl_statement(statement)?;
@@ -253,7 +327,7 @@ impl DatabaseDriver for MySqlDriver {
         validate_identifier(table)?;
         validate_identifier(column)?;
 
-        let columns = metadata::get_table_columns(&self.pool, schema, table).await?;
+        let columns = metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb).await?;
         let pk_values = pk_values_from_row(&columns, row)?;
 
         executor::update_json_cell(&self.pool, schema, table, &pk_values, column, value).await
@@ -271,7 +345,7 @@ impl DatabaseDriver for MySqlDriver {
         validate_identifier(table)?;
         validate_identifier(column)?;
 
-        let columns = metadata::get_table_columns(&self.pool, schema, table).await?;
+        let columns = metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb).await?;
         if !columns.iter().any(|c| c.name == column) {
             return Err(AppError::new(format!("Unknown column '{column}'.")));
         }
@@ -294,7 +368,7 @@ impl DatabaseDriver for MySqlDriver {
             return Ok(0);
         }
 
-        let columns = metadata::get_table_columns(&self.pool, schema, table).await?;
+        let columns = metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb).await?;
 
         let mut rows_pk_values = Vec::with_capacity(rows.len());
         for row in rows {
@@ -315,7 +389,9 @@ impl DatabaseDriver for MySqlDriver {
 
         let mut insert_values = Vec::with_capacity(values.len());
         for (column, value) in values {
-            let Some(text) = json_to_insert_text(value) else { continue };
+            let Some(text) = json_to_insert_text(value) else {
+                continue;
+            };
             validate_identifier(column)?;
             insert_values.push((column.clone(), text));
         }
@@ -323,11 +399,114 @@ impl DatabaseDriver for MySqlDriver {
         executor::insert_row(&self.pool, schema, table, &insert_values).await
     }
 
-    async fn execute_query(&self, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {
+    async fn execute_query(&self, sql: &str, offset: u64, limit: u64) -> Result<RawQueryResult, AppError> {
         if sql.trim().is_empty() {
             return Err(AppError::new("Cannot execute an empty query."));
         }
-        executor::execute_query(&self.pool, sql, max_rows).await
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
+        executor::execute_query(&mut conn, sql, offset, limit).await
+    }
+
+    async fn execute_query_for_tab(
+        &self,
+        tab_id: &str,
+        sql: &str,
+        offset: u64,
+        limit: u64,
+    ) -> Result<RawQueryResult, AppError> {
+        if sql.trim().is_empty() {
+            return Err(AppError::new("Cannot execute an empty query."));
+        }
+
+        // Std Mutex guards can't cross an .await point, so the reserved
+        // connection is taken out of the map, used, then put back.
+        let reserved = self.reserved.lock().unwrap().remove(tab_id);
+        match reserved {
+            Some(mut conn) => {
+                let result = self.execute_query_trackable(tab_id, &mut conn, sql, offset, limit).await;
+                self.reserved.lock().unwrap().insert(tab_id.to_string(), conn);
+                result
+            }
+            None => {
+                let mut conn = self
+                    .pool
+                    .acquire()
+                    .await
+                    .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
+                self.execute_query_trackable(tab_id, &mut conn, sql, offset, limit).await
+            }
+        }
+    }
+
+    async fn begin_transaction(&self, tab_id: &str) -> Result<(), AppError> {
+        if self.reserved.lock().unwrap().contains_key(tab_id) {
+            return Err(AppError::new("This tab already has an open transaction."));
+        }
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
+        // MySQL rejects START TRANSACTION/COMMIT/ROLLBACK as prepared
+        // statements ("This command is not supported in the prepared
+        // statement protocol yet") — confirmed live. sqlx::query(...)
+        // always prepares; sqlx::raw_sql runs on the plain text protocol
+        // instead, which is what these three commands need.
+        sqlx::raw_sql("START TRANSACTION")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| AppError::new(crate::error::describe_mysql_error(&e)))?;
+        self.reserved.lock().unwrap().insert(tab_id.to_string(), conn);
+        Ok(())
+    }
+
+    async fn commit_transaction(&self, tab_id: &str) -> Result<(), AppError> {
+        let mut conn = self.reserved.lock().unwrap().remove(tab_id).ok_or_else(|| {
+            AppError::new("This tab has no open transaction to commit.")
+        })?;
+        sqlx::raw_sql("COMMIT")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| AppError::new(crate::error::describe_mysql_error(&e)))?;
+        Ok(())
+    }
+
+    async fn rollback_transaction(&self, tab_id: &str) -> Result<(), AppError> {
+        let mut conn = self.reserved.lock().unwrap().remove(tab_id).ok_or_else(|| {
+            AppError::new("This tab has no open transaction to roll back.")
+        })?;
+        sqlx::raw_sql("ROLLBACK")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| AppError::new(crate::error::describe_mysql_error(&e)))?;
+        Ok(())
+    }
+
+    fn has_active_transaction(&self, tab_id: &str) -> bool {
+        self.reserved.lock().unwrap().contains_key(tab_id)
+    }
+
+    async fn cancel_query(&self, tab_id: &str) -> Result<(), AppError> {
+        let connection_id = self
+            .running_ids
+            .lock()
+            .unwrap()
+            .get(tab_id)
+            .copied()
+            .ok_or_else(|| AppError::new("No query is currently running on this tab."))?;
+
+        // The connection running the query is busy and can't cancel
+        // itself — a separate connection sends KILL QUERY instead, same
+        // as Beekeeper Studio's own MySQL cancel path.
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("KILL QUERY {connection_id}")))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::new(crate::error::describe_mysql_error(&e)))?;
+        Ok(())
     }
 }
 

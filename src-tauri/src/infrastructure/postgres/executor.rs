@@ -206,7 +206,17 @@ pub async fn count_rows(
     Ok(count as u64)
 }
 
-pub async fn execute_query(client: &Client, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {
+/// Runs `sql`, fetching only `limit` rows starting at `offset`. A
+/// SELECT-shaped `sql` is wrapped as a subquery so the database itself
+/// only ever materializes one page — see `execute_query_page` — with a
+/// separate `SELECT COUNT(*)` for the total. A write/DDL statement (no
+/// result columns) just executes once, ignoring `offset`/`limit`.
+pub async fn execute_query(
+    client: &Client,
+    sql: &str,
+    offset: u64,
+    limit: u64,
+) -> Result<RawQueryResult, AppError> {
     let stmt = client
         .prepare(sql)
         .await
@@ -220,24 +230,95 @@ pub async fn execute_query(client: &Client, sql: &str, max_rows: usize) -> Resul
         return Ok(RawQueryResult::Affected { row_count: affected });
     }
 
-    let columns = stmt.columns().iter().map(|c| c.name().to_string()).collect();
+    match execute_query_page(client, sql, offset, limit).await {
+        Ok(result) => Ok(result),
+        Err(WrapOrRuntimeError::Runtime(e)) => Err(AppError::new(describe_pg_error(&e))),
+        Err(WrapOrRuntimeError::Wrap) => {
+            // `sql` can't be wrapped as a subquery (rare — some
+            // statement shapes are only valid at the top level). Fall
+            // back to running it unwrapped, once, unpaginated.
+            let columns = stmt.columns().iter().map(|c| c.name().to_string()).collect();
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| AppError::new(describe_pg_error(&e)))?;
+            let json_rows = rows
+                .iter()
+                .map(|row| (0..row.len()).map(|i| row_value_to_json(row, i)).collect::<Vec<_>>())
+                .collect::<Vec<_>>();
+            Ok(RawQueryResult::Rows {
+                columns,
+                rows: json_rows,
+                total_row_count: None,
+            })
+        }
+    }
+}
 
+/// Distinguishes "the count/page SQL itself doesn't parse — `sql` can't
+/// be used as a subquery" (worth retrying unwrapped) from any other
+/// failure while running it, cancellation included (must propagate, not
+/// be swallowed by a silent retry that re-runs the query a second time).
+enum WrapOrRuntimeError {
+    Wrap,
+    Runtime(tokio_postgres::Error),
+}
+
+fn classify_wrap_error(e: tokio_postgres::Error) -> WrapOrRuntimeError {
+    use tokio_postgres::error::SqlState;
+    match e.code() {
+        Some(&SqlState::SYNTAX_ERROR) | Some(&SqlState::FEATURE_NOT_SUPPORTED) => {
+            WrapOrRuntimeError::Wrap
+        }
+        _ => WrapOrRuntimeError::Runtime(e),
+    }
+}
+
+/// Wraps `sql` as a single query that both counts the total (via
+/// `count(*) over()`, computed once per row already being scanned — no
+/// second full execution) and pages the rows via `LIMIT`/`OFFSET`, so
+/// `sql` runs against the database exactly once per page fetched.
+async fn execute_query_page(
+    client: &Client,
+    sql: &str,
+    offset: u64,
+    limit: u64,
+) -> Result<RawQueryResult, WrapOrRuntimeError> {
+    let page_sql =
+        format!("select *, count(*) over() as __total_row_count from ({sql}) as q limit $1 offset $2");
+    let page_stmt = client.prepare(&page_sql).await.map_err(classify_wrap_error)?;
+    let columns: Vec<String> = page_stmt.columns().iter().map(|c| c.name().to_string()).collect();
+    let total_col_index = columns.len() - 1;
+    let columns = columns[..total_col_index].to_vec();
+
+    let limit = limit as i64;
+    let offset = offset as i64;
     let rows = client
-        .query(&stmt, &[])
+        .query(&page_stmt, &[&limit, &offset])
         .await
-        .map_err(|e| AppError::new(describe_pg_error(&e)))?;
+        .map_err(WrapOrRuntimeError::Runtime)?;
 
-    let row_count = rows.len();
+    // With zero matching rows the LIMIT/OFFSET query returns no rows at
+    // all, so `count(*) over()` never appears — a plain, uncounted
+    // COUNT(*) is the only way to learn the true total in that case.
+    let total = match rows.first() {
+        Some(row) => row.get::<_, i64>(total_col_index),
+        None => {
+            let count_sql = format!("select count(*) from ({sql}) as q");
+            let count_row = client.query_one(&count_sql, &[]).await.map_err(WrapOrRuntimeError::Runtime)?;
+            count_row.get::<_, i64>(0)
+        }
+    };
+
     let json_rows = rows
         .iter()
-        .take(max_rows)
-        .map(|row| (0..row.len()).map(|i| row_value_to_json(row, i)).collect::<Vec<_>>())
+        .map(|row| (0..total_col_index).map(|i| row_value_to_json(row, i)).collect::<Vec<_>>())
         .collect::<Vec<_>>();
 
     Ok(RawQueryResult::Rows {
         columns,
         rows: json_rows,
-        row_count,
+        total_row_count: Some(total as usize),
     })
 }
 

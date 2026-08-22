@@ -16,8 +16,17 @@ pub fn encode_cell(value: JsonValue) -> String {
 pub enum RawQueryResult {
     Rows {
         columns: Vec<String>,
+        /// Just this page's rows — the engine only ever fetches
+        /// `limit` rows per call, via `LIMIT`/`OFFSET` on a wrapped
+        /// subquery, never the full result set at once.
         rows: Vec<Vec<JsonValue>>,
-        row_count: usize,
+        /// The query's total matching row count, from a separate
+        /// `SELECT COUNT(*) FROM (<sql>) AS q`. `None` when the query
+        /// couldn't be wrapped for counting/paging (rare — some
+        /// statement shapes can't be used as a subquery) — in that
+        /// case `rows` is simply everything the query returned, and
+        /// there's no next page to fetch.
+        total_row_count: Option<usize>,
     },
     Affected {
         row_count: u64,
@@ -33,9 +42,15 @@ pub enum QueryResult {
     #[serde(rename_all = "camelCase")]
     Rows {
         columns: Vec<String>,
+        /// Just the first page — see `db_fetch_query_result_page` for
+        /// the rest, which re-runs the query against the database with
+        /// a different `OFFSET` rather than reading from anything
+        /// cached in memory.
         rows: Vec<Vec<String>>,
-        row_count: u32,
-        truncated: bool,
+        /// The query's total matching row count, when known (see
+        /// `RawQueryResult::Rows::total_row_count`). `None` means this
+        /// result can't be paginated — `rows` is everything there is.
+        total_row_count: Option<u32>,
         duration_ms: u32,
     },
     #[serde(rename_all = "camelCase")]
@@ -43,6 +58,17 @@ pub enum QueryResult {
         row_count: u32,
         duration_ms: u32,
     },
+}
+
+/// One page of query results, fetched fresh from the database with
+/// `LIMIT`/`OFFSET` on the original query text — see
+/// `db_fetch_query_result_page`.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryResultPage {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub total_row_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

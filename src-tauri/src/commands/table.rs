@@ -83,9 +83,7 @@ pub async fn db_update_json_cell(
     value: String,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<(), AppError> {
-    let driver = registry
-        .get(&connection_id)
-        .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
+    let driver = registry.require_writable(&connection_id)?;
 
     let row = decode_row(row)?;
     let value: JsonValue = serde_json::from_str(&value)
@@ -105,12 +103,18 @@ pub async fn db_update_cell_text(
     value: Option<String>,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<(), AppError> {
-    let driver = registry
-        .get(&connection_id)
-        .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
+    let driver = registry.require_writable(&connection_id)?;
 
     let row = decode_row(row)?;
-    service::update_cell_text(driver.as_ref(), &schema, &table, &row, &column, value.as_deref()).await
+    service::update_cell_text(
+        driver.as_ref(),
+        &schema,
+        &table,
+        &row,
+        &column,
+        value.as_deref(),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -122,11 +126,12 @@ pub async fn db_delete_rows(
     rows: Vec<HashMap<String, String>>,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<u32, AppError> {
-    let driver = registry
-        .get(&connection_id)
-        .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
+    let driver = registry.require_writable(&connection_id)?;
 
-    let rows = rows.into_iter().map(decode_row).collect::<Result<Vec<_>, _>>()?;
+    let rows = rows
+        .into_iter()
+        .map(decode_row)
+        .collect::<Result<Vec<_>, _>>()?;
     let affected = service::delete_rows(driver.as_ref(), &schema, &table, &rows).await?;
     Ok(affected as u32)
 }
@@ -140,9 +145,7 @@ pub async fn db_insert_row(
     values: HashMap<String, String>,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<(), AppError> {
-    let driver = registry
-        .get(&connection_id)
-        .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))?;
+    let driver = registry.require_writable(&connection_id)?;
 
     let values = decode_row(values)?;
     service::insert_row(driver.as_ref(), &schema, &table, &values).await

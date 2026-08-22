@@ -24,10 +24,12 @@ import {
   AlertDialogTitle,
 } from "@/src/app/components/ui/alert-dialog";
 import { Button } from "@/src/app/components/ui/button";
+import { toast } from "@/src/app/components/ui/toast";
 import { Input } from "@/src/app/components/ui/input";
 import { CopyButton } from "@/src/components/CopyButton";
 import { ExportButton } from "@/src/components/ExportButton";
 import { DataGrid, type JsonCellMode, type RowEdit } from "@/src/features/tables/components/DataGrid";
+import { SchemaGraphView } from "@/src/features/schema/components/SchemaGraphView";
 import { TableStructureView } from "@/src/features/schema/components/TableStructureView";
 import { JsonInspectorSheet } from "@/src/features/tables/components/JsonViewer/JsonInspectorSheet";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
@@ -65,7 +67,7 @@ interface JsonSheetState {
 const DEFAULT_PAGE_SIZE = 200;
 const MAX_PAGE_SIZE = 10000;
 
-type ViewMode = "data" | "structure";
+type ViewMode = "data" | "structure" | "schema";
 
 export function TableView({ tab }: TableViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("data");
@@ -245,6 +247,7 @@ export function TableView({ tab }: TableViewProps) {
           values[columnName] = pendingEdit.values[columnName];
         }
         await insertRow(tab.connectionId, tab.schema, tab.table, values);
+        toast.add({ type: "success", title: "Row inserted", description: `1 row added to ${tab.table}` });
       } else {
         const rowObject = rowToObject(result.columns, pendingEdit.row);
         for (const columnName of changedColumns) {
@@ -257,6 +260,11 @@ export function TableView({ tab }: TableViewProps) {
             pendingEdit.values[columnName]
           );
         }
+        toast.add({
+          type: "success",
+          title: "Row updated",
+          description: `${changedColumns.length} field${changedColumns.length === 1 ? "" : "s"} updated in ${tab.table}`,
+        });
       }
       setPendingEdit(null);
       setIsInsertingRow(false);
@@ -280,9 +288,14 @@ export function TableView({ tab }: TableViewProps) {
     setDeleteError(null);
     try {
       const rowsToDelete = rowsPendingDelete.map((i) => rowToObject(result.columns, result.rows[i]));
-      await deleteRows(tab.connectionId, tab.schema, tab.table, rowsToDelete);
+      const affected = await deleteRows(tab.connectionId, tab.schema, tab.table, rowsToDelete);
       setConfirmDeleteOpen(false);
       setRowsPendingDelete([]);
+      toast.add({
+        type: "success",
+        title: "Rows deleted",
+        description: `${affected} row${affected === 1 ? "" : "s"} deleted from ${tab.table}`,
+      });
       refresh();
     } catch (err) {
       setDeleteError(toErrorMessage(err));
@@ -328,6 +341,13 @@ export function TableView({ tab }: TableViewProps) {
             >
               Structure
             </Button>
+            <Button
+              variant={viewMode === "schema" ? "secondary" : "ghost"}
+              size="xs"
+              onClick={() => setViewMode("schema")}
+            >
+              Schema
+            </Button>
           </div>
         </div>
         {viewMode === "data" && (
@@ -359,10 +379,32 @@ export function TableView({ tab }: TableViewProps) {
           </Button>
         </div>
         )}
+        {viewMode === "structure" && (
+          <ExportButton
+            target={{
+              kind: "table",
+              connectionId: tab.connectionId,
+              schema: tab.schema,
+              table: tab.table,
+              filters: [],
+              sort: [],
+            }}
+            fileBaseName={`${tab.schema}_${tab.table}`}
+          />
+        )}
       </div>
 
       {viewMode === "structure" && (
-        <TableStructureView connectionId={tab.connectionId} schema={tab.schema} table={tab.table} />
+        <TableStructureView
+          connectionId={tab.connectionId}
+          engine={tab.engine}
+          schema={tab.schema}
+          table={tab.table}
+        />
+      )}
+
+      {viewMode === "schema" && (
+        <SchemaGraphView connectionId={tab.connectionId} schema={tab.schema} />
       )}
 
       {viewMode === "data" && (
@@ -559,7 +601,20 @@ export function TableView({ tab }: TableViewProps) {
             disabled={loading && !result}
           />
           <ExportButton
-            target={{ kind: "table", connectionId: tab.connectionId, schema: tab.schema, table: tab.table }}
+            target={{
+              kind: "table",
+              connectionId: tab.connectionId,
+              schema: tab.schema,
+              table: tab.table,
+              filters,
+              sort,
+              page: result
+                ? {
+                    columns: result.columns,
+                    rows: result.rows.map((row) => row.map((cell) => JSON.stringify(cell))),
+                  }
+                : undefined,
+            }}
             fileBaseName={`${tab.schema}_${tab.table}`}
             disabled={loading && !result}
           />

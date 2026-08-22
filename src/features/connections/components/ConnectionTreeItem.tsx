@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import {
   ChevronRight,
   Copy,
+  Download,
   Eye,
   History,
   Loader2,
+  Lock,
   MoreHorizontal,
   Pencil,
   Plug,
@@ -30,7 +32,13 @@ import {
   SidebarMenuSubItem,
 } from "@/src/app/components/ui/sidebar";
 import { RenameConnectionDialog } from "@/src/features/connections/components/RenameConnectionDialog";
-import { toDisplayUrl, type SavedConnectionProfile } from "@/src/features/connections/types";
+import {
+  engineOf,
+  toDisplayUrl,
+  type Engine,
+  type SavedConnectionProfile,
+} from "@/src/features/connections/types";
+import { MultiTableExportDialog } from "@/src/components/MultiTableExportDialog";
 import { CreateTableDialog } from "@/src/features/schema/components/CreateTableDialog";
 import { DropTableDialog } from "@/src/features/schema/components/DropTableDialog";
 import { RenameTableDialog } from "@/src/features/schema/components/RenameTableDialog";
@@ -77,6 +85,7 @@ export function ConnectionTreeItem({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [tables, setTables] = useState<TableRef[] | null>(null);
 
   useEffect(() => {
@@ -133,6 +142,9 @@ export function ConnectionTreeItem({
           <Plug className={`size-4 ${isConnected ? "" : "text-muted-foreground"}`} />
         )}
         <span className={isConnected ? "" : "text-muted-foreground"}>{connection.name}</span>
+        {connection.readOnly && (
+          <Lock className="size-3 shrink-0 text-muted-foreground" aria-label="Read-only connection" />
+        )}
       </SidebarMenuButton>
 
       <DropdownMenu>
@@ -154,8 +166,20 @@ export function ConnectionTreeItem({
             <Copy className="size-3.5" />
             Copy Connection String
           </DropdownMenuItem>
+          {isConnected && (
+            <DropdownMenuItem onClick={() => setExportOpen(true)}>
+              <Download className="size-3.5" />
+              Export Tables…
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <MultiTableExportDialog
+        connectionId={connection.id}
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+      />
 
       <RenameConnectionDialog
         connectionId={connection.id}
@@ -202,6 +226,7 @@ export function ConnectionTreeItem({
             <SchemaGroup
               key={schemaName}
               connectionId={connection.id}
+              engine={engineOf(connection)}
               schema={schemaName}
               tables={schemaTables}
               onOpenTable={onOpenTable}
@@ -230,12 +255,14 @@ export function ConnectionTreeItem({
 
 function SchemaGroup({
   connectionId,
+  engine,
   schema,
   tables,
   onOpenTable,
   onTableChanged,
 }: {
   connectionId: string;
+  engine: Engine;
   schema: string;
   tables: TableRef[];
   onOpenTable: (schema: string, table: string) => void;
@@ -284,6 +311,7 @@ function SchemaGroup({
 
       <CreateTableDialog
         connectionId={connectionId}
+        engine={engine}
         schema={schema}
         open={createOpen}
         onOpenChange={setCreateOpen}

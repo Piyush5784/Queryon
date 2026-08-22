@@ -4,7 +4,7 @@ pub mod error;
 pub mod infrastructure;
 pub mod state;
 
-use state::{ConnectionRegistry, ExportJobRegistry};
+use state::{ConnectionRegistry, ExportJobRegistry, QueryResultCache};
 use tauri_specta::{collect_commands, Builder};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,6 +21,7 @@ pub fn run() {
         commands::connection::db_connect_saved,
         commands::connection::db_delete_saved_connection,
         commands::connection::db_rename_saved_connection,
+        commands::connection::ssh_pick_key_file,
         commands::schema::db_list_tables,
         commands::schema::db_get_table_columns,
         commands::schema::db_list_indexes,
@@ -35,6 +36,13 @@ pub fn run() {
         commands::table::db_delete_rows,
         commands::table::db_insert_row,
         commands::query::db_execute_query,
+        commands::query::db_fetch_query_result_page,
+        commands::query::db_clear_query_result_cache,
+        commands::query::db_cancel_query,
+        commands::query::db_begin_transaction,
+        commands::query::db_commit_transaction,
+        commands::query::db_rollback_transaction,
+        commands::query::db_has_active_transaction,
         commands::query::db_save_query,
         commands::query::db_list_saved_queries,
         commands::query::db_delete_saved_query,
@@ -44,6 +52,7 @@ pub fn run() {
         commands::export::export_pick_directory,
         commands::export::export_run_table,
         commands::export::export_run_rows,
+        commands::export::export_run_query,
         commands::export::export_cancel,
     ]);
 
@@ -61,6 +70,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(ConnectionRegistry::default())
         .manage(ExportJobRegistry::default())
+        .manage(QueryResultCache::default())
         .invoke_handler(builder.invoke_handler())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -8,13 +8,8 @@ services:
       POSTGRES_PASSWORD: devpass
       POSTGRES_DB: devdb
     ports:
-      # Non-default host port so this doesn't collide with a Postgres
-      # instance you might already have running locally on 5432, 55432,
-      # or 55433.
       - "55434:5432"
     volumes:
-      # No named data volume — this container is ephemeral by design so
-      # `docker compose down` always gives back the clean seed state.
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U devuser -d devdb"]
@@ -57,3 +52,84 @@ services:
       timeout: 5s
       retries: 10
 
+  mariadb:
+    # MariaDB reuses MySqlDriver entirely (same wire protocol) — this
+    # container exists only to verify the handful of catalog-query
+    # differences (see infrastructure/mysql/metadata.rs) against a real
+    # MariaDB server, the way Beekeeper's MariaDBClient extends MysqlClient.
+    image: mariadb:11
+    container_name: queryon-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: devpass
+      MARIADB_DATABASE: devdb
+      MARIADB_USER: devuser
+      MARIADB_PASSWORD: devpass
+    ports:
+      - "33077:3306"
+    volumes:
+      - ./docker/initdb-mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "devuser", "-pdevpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cockroachdb:
+    image: cockroachdb/cockroach:latest-v23.2
+    container_name: queryon-cockroachdb
+    restart: unless-stopped
+    command: start-single-node --insecure
+    environment:
+      COCKROACH_DATABASE: devdb
+      COCKROACH_USER: devuser
+    ports:
+      - "26257:26257"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health?ready=1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cockroachdb-init:
+    # CockroachDB's image has no docker-entrypoint-initdb.d convention
+    # (unlike the Postgres/MySQL images above), so the seed schema is
+    # applied by this one-shot service instead — runs once after
+    # cockroachdb is healthy, then exits. Not idempotent (CREATE TABLE
+    # isn't IF NOT EXISTS, matching 01_schema.sql for Postgres) — re-run
+    # only against a fresh cockroachdb container/volume.
+    image: cockroachdb/cockroach:latest-v23.2
+    container_name: queryon-cockroachdb-init
+    depends_on:
+      cockroachdb:
+        condition: service_healthy
+    volumes:
+      - ./docker/initdb-cockroachdb:/initdb:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for f in /initdb/*.sql; do
+          ./cockroach sql --insecure --host=cockroachdb:26257 -d devdb -f "$$f" || exit 1
+        done
+    restart: "no"
+
+  ssh-bastion:
+    image: linuxserver/openssh-server:latest
+    container_name: queryon-ssh-bastion
+    restart: unless-stopped
+    environment:
+      PUID: 1000
+      PGID: 1000
+      PASSWORD_ACCESS: "true"
+      USER_NAME: tunneluser
+      USER_PASSWORD: tunnelpass
+    volumes:
+      # Enables AllowTcpForwarding, off by default in this image — see
+      # the script itself for why.
+      - ./docker/ssh-bastion/custom-cont-init.d:/custom-cont-init.d:ro
+      # Public half of tests/fixtures/test_ssh_key, so the private-key
+      # auth path in tests/ssh_tunnel.rs has something to authenticate
+      # against.
+      - ./docker/ssh-bastion/authorized_keys:/config/.ssh/authorized_keys:ro
+    ports:
+      - "22222:2222"

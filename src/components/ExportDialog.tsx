@@ -4,6 +4,7 @@ import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 
 import { Button } from "@/src/app/components/ui/button";
 import { Checkbox } from "@/src/app/components/ui/checkbox";
+import type { ExportTarget } from "@/src/components/exportTypes";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,7 @@ import {
   FieldLabel,
 } from "@/src/app/components/ui/field";
 import { Input } from "@/src/app/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/src/app/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -31,16 +33,14 @@ import {
   cancelExport,
   getExportDefaultDirectory,
   pickExportDirectory,
+  runQueryExport,
   runRowsExport,
   runTableExport,
+  type QueryExportRequest,
   type RowsExportRequest,
   type TableExportRequest,
 } from "@/src/lib/tauri/commands";
 import { toPrefixedErrorMessage } from "@/src/lib/tauri/errors";
-
-type ExportTarget =
-  | { kind: "table"; connectionId: string; schema: string; table: string; rowCountHint?: number }
-  | { kind: "rows"; columns: string[]; rows: string[][] };
 
 interface ExportDialogProps {
   open: boolean;
@@ -48,6 +48,9 @@ interface ExportDialogProps {
   target: ExportTarget | null;
   fileBaseName: string;
 }
+
+type TableScope = "whole" | "filtered" | "page";
+type QueryScope = "page" | "whole";
 
 type RunState =
   | { phase: "idle" }
@@ -64,13 +67,19 @@ export function ExportDialog({ open, onOpenChange, target, fileBaseName }: Expor
   const [deleteOnAbort, setDeleteOnAbort] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [chunkSize, setChunkSize] = useState(500);
+  const [tableScope, setTableScope] = useState<TableScope>("whole");
+  const [queryScope, setQueryScope] = useState<QueryScope>("whole");
   const [runState, setRunState] = useState<RunState>({ phase: "idle" });
   const unlistenRef = useRef<(() => void) | null>(null);
+
+  const hasActiveFilter = target?.kind === "table" && (target.filters.length > 0 || target.sort.length > 0);
 
   useEffect(() => {
     if (!open) return;
     setFileName(suggestedFileName(fileBaseName, format));
     setRunState({ phase: "idle" });
+    setTableScope("whole");
+    setQueryScope("whole");
     getExportDefaultDirectory()
       .then(setDirectory)
       .catch(() => setDirectory(""));
@@ -122,18 +131,59 @@ export function ExportDialog({ open, onOpenChange, target, fileBaseName }: Expor
 
     try {
       if (target.kind === "table") {
-        const request: TableExportRequest = {
-          connectionId: target.connectionId,
-          schema: target.schema,
-          table: target.table,
-          directory,
-          fileName: fileName.trim(),
-          format,
-          prettyPrint,
-          chunkSize,
-          deleteOnAbort,
-        };
-        await runTableExport(jobId, request);
+        if (tableScope === "page" && target.page) {
+          const request: RowsExportRequest = {
+            columns: target.page.columns,
+            rows: target.page.rows,
+            directory,
+            fileName: fileName.trim(),
+            format,
+            prettyPrint,
+            deleteOnAbort,
+          };
+          await runRowsExport(jobId, request);
+        } else {
+          const request: TableExportRequest = {
+            connectionId: target.connectionId,
+            schema: target.schema,
+            table: target.table,
+            filters: tableScope === "filtered" ? target.filters : [],
+            sort: tableScope === "filtered" ? target.sort : [],
+            directory,
+            fileName: fileName.trim(),
+            format,
+            prettyPrint,
+            chunkSize,
+            deleteOnAbort,
+          };
+          await runTableExport(jobId, request);
+        }
+      } else if (target.kind === "query") {
+        if (queryScope === "page") {
+          const request: RowsExportRequest = {
+            columns: target.page.columns,
+            rows: target.page.rows,
+            directory,
+            fileName: fileName.trim(),
+            format,
+            prettyPrint,
+            deleteOnAbort,
+          };
+          await runRowsExport(jobId, request);
+        } else {
+          const request: QueryExportRequest = {
+            connectionId: target.connectionId,
+            tabId: target.tabId,
+            sql: target.sql,
+            directory,
+            fileName: fileName.trim(),
+            format,
+            prettyPrint,
+            chunkSize,
+            deleteOnAbort,
+          };
+          await runQueryExport(jobId, request);
+        }
       } else {
         const request: RowsExportRequest = {
           columns: target.columns,
@@ -176,6 +226,9 @@ export function ExportDialog({ open, onOpenChange, target, fileBaseName }: Expor
 
   const running = runState.phase === "running";
   const canRun = !running && fileName.trim().length > 0 && directory.trim().length > 0;
+  const showChunkSize =
+    (target?.kind === "table" && tableScope !== "page") ||
+    (target?.kind === "query" && queryScope === "whole");
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -183,12 +236,79 @@ export function ExportDialog({ open, onOpenChange, target, fileBaseName }: Expor
         <DialogHeader>
           <DialogTitle>Export {targetLabel(target)}</DialogTitle>
           <DialogDescription>
-            This will export table rows directly to a file. You can choose the format and file name.
-            For tables with many rows, this runs in the background, so you can keep working.
+            This will export rows directly to a file. You can choose the format and file name.
+            For large exports, this runs in the background, so you can keep working.
           </DialogDescription>
         </DialogHeader>
 
         <FieldGroup>
+          {target?.kind === "table" && (
+            <Field>
+              <FieldLabel>Scope</FieldLabel>
+              <FieldContent>
+                <RadioGroup
+                  value={tableScope}
+                  onValueChange={(v) => setTableScope(v as TableScope)}
+                  disabled={running}
+                >
+                  <Field orientation="horizontal">
+                    <RadioGroupItem value="whole" id="scope-table-whole" />
+                    <FieldLabel htmlFor="scope-table-whole" className="font-normal">
+                      Whole table
+                    </FieldLabel>
+                  </Field>
+                  <Field orientation="horizontal">
+                    <RadioGroupItem
+                      value="filtered"
+                      id="scope-table-filtered"
+                      disabled={running || !hasActiveFilter}
+                    />
+                    <FieldLabel
+                      htmlFor="scope-table-filtered"
+                      className={hasActiveFilter ? "font-normal" : "font-normal text-muted-foreground"}
+                    >
+                      Filtered view{!hasActiveFilter ? " (no filter applied)" : ""}
+                    </FieldLabel>
+                  </Field>
+                  {target.page && (
+                    <Field orientation="horizontal">
+                      <RadioGroupItem value="page" id="scope-table-page" />
+                      <FieldLabel htmlFor="scope-table-page" className="font-normal">
+                        This page ({target.page.rows.length.toLocaleString()} rows loaded)
+                      </FieldLabel>
+                    </Field>
+                  )}
+                </RadioGroup>
+              </FieldContent>
+            </Field>
+          )}
+
+          {target?.kind === "query" && (
+            <Field>
+              <FieldLabel>Scope</FieldLabel>
+              <FieldContent>
+                <RadioGroup
+                  value={queryScope}
+                  onValueChange={(v) => setQueryScope(v as QueryScope)}
+                  disabled={running}
+                >
+                  <Field orientation="horizontal">
+                    <RadioGroupItem value="whole" id="scope-query-whole" />
+                    <FieldLabel htmlFor="scope-query-whole" className="font-normal">
+                      Whole result (re-runs the query)
+                    </FieldLabel>
+                  </Field>
+                  <Field orientation="horizontal">
+                    <RadioGroupItem value="page" id="scope-query-page" />
+                    <FieldLabel htmlFor="scope-query-page" className="font-normal">
+                      This page ({target.page.rows.length.toLocaleString()} rows loaded)
+                    </FieldLabel>
+                  </Field>
+                </RadioGroup>
+              </FieldContent>
+            </Field>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             <Field className="col-span-2">
               <FieldLabel htmlFor="export-filename">File Name</FieldLabel>
@@ -266,7 +386,7 @@ export function ExportDialog({ open, onOpenChange, target, fileBaseName }: Expor
                 </Field>
               )}
 
-              {target?.kind === "table" && (
+              {showChunkSize && (
                 <Field>
                   <FieldLabel htmlFor="export-chunk-size">Chunk size</FieldLabel>
                   <FieldContent>
@@ -346,5 +466,6 @@ export function ExportDialog({ open, onOpenChange, target, fileBaseName }: Expor
 
 function targetLabel(target: ExportTarget | null): string {
   if (!target) return "";
-  return target.kind === "table" ? target.table : "query result";
+  if (target.kind === "table") return target.table;
+  return "query result";
 }

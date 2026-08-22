@@ -13,6 +13,11 @@ export const commands = {
 	dbConnectSaved: (connectionId: string) => typedError<ConnectionInfo, AppError>(__TAURI_INVOKE("db_connect_saved", { connectionId })),
 	dbDeleteSavedConnection: (connectionId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_delete_saved_connection", { connectionId })),
 	dbRenameSavedConnection: (connectionId: string, name: string) => typedError<null, AppError>(__TAURI_INVOKE("db_rename_saved_connection", { connectionId, name })),
+	/**
+	 *  Opens the OS's native file picker for choosing an SSH private key
+	 *  file. Returns `None` if the user cancels.
+	 */
+	sshPickKeyFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("ssh_pick_key_file")),
 	dbListTables: (connectionId: string) => typedError<TableRef[], AppError>(__TAURI_INVOKE("db_list_tables", { connectionId })),
 	dbGetTableColumns: (connectionId: string, schema: string, table: string) => typedError<ColumnInfo[], AppError>(__TAURI_INVOKE("db_get_table_columns", { connectionId, schema, table })),
 	dbListIndexes: (connectionId: string, schema: string, table: string) => typedError<IndexInfo[], AppError>(__TAURI_INVOKE("db_list_indexes", { connectionId, schema, table })),
@@ -26,7 +31,14 @@ export const commands = {
 	dbUpdateCellText: (connectionId: string, schema: string, table: string, row: { [key in string]: string }, column: string, value: string | null) => typedError<null, AppError>(__TAURI_INVOKE("db_update_cell_text", { connectionId, schema, table, row, column, value })),
 	dbDeleteRows: (connectionId: string, schema: string, table: string, rows: { [key in string]: string }[]) => typedError<number, AppError>(__TAURI_INVOKE("db_delete_rows", { connectionId, schema, table, rows })),
 	dbInsertRow: (connectionId: string, schema: string, table: string, values: { [key in string]: string }) => typedError<null, AppError>(__TAURI_INVOKE("db_insert_row", { connectionId, schema, table, values })),
-	dbExecuteQuery: (connectionId: string, sql: string) => typedError<QueryResult, AppError>(__TAURI_INVOKE("db_execute_query", { connectionId, sql })),
+	dbExecuteQuery: (connectionId: string, sql: string, tabId: string | null) => typedError<QueryResult, AppError>(__TAURI_INVOKE("db_execute_query", { connectionId, sql, tabId })),
+	dbFetchQueryResultPage: (connectionId: string, tabId: string, offset: number, limit: number) => typedError<QueryResultPage, AppError>(__TAURI_INVOKE("db_fetch_query_result_page", { connectionId, tabId, offset, limit })),
+	dbClearQueryResultCache: (tabId: string) => __TAURI_INVOKE<void>("db_clear_query_result_cache", { tabId }),
+	dbCancelQuery: (connectionId: string, tabId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_cancel_query", { connectionId, tabId })),
+	dbBeginTransaction: (connectionId: string, tabId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_begin_transaction", { connectionId, tabId })),
+	dbCommitTransaction: (connectionId: string, tabId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_commit_transaction", { connectionId, tabId })),
+	dbRollbackTransaction: (connectionId: string, tabId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_rollback_transaction", { connectionId, tabId })),
+	dbHasActiveTransaction: (connectionId: string, tabId: string) => __TAURI_INVOKE<boolean>("db_has_active_transaction", { connectionId, tabId }),
 	dbSaveQuery: (query: SavedQuery) => typedError<null, AppError>(__TAURI_INVOKE("db_save_query", { query })),
 	dbListSavedQueries: (connectionId: string) => typedError<SavedQuery[], AppError>(__TAURI_INVOKE("db_list_saved_queries", { connectionId })),
 	dbDeleteSavedQuery: (queryId: string) => typedError<null, AppError>(__TAURI_INVOKE("db_delete_saved_query", { queryId })),
@@ -55,6 +67,13 @@ export const commands = {
 	 *  chunks, off the main thread so the UI never blocks.
 	 */
 	exportRunRows: (jobId: string, request: RowsExportRequest) => typedError<null, AppError>(__TAURI_INVOKE("export_run_rows", { jobId, request })),
+	/**
+	 *  Starts a background chunked export of a query tab's full result,
+	 *  re-running the SQL against the database with `LIMIT`/`OFFSET` per
+	 *  chunk rather than exporting whatever page is currently loaded in the
+	 *  results grid.
+	 */
+	exportRunQuery: (jobId: string, request: QueryExportRequest) => typedError<null, AppError>(__TAURI_INVOKE("export_run_query", { jobId, request })),
 	exportCancel: (jobId: string) => __TAURI_INVOKE<void>("export_cancel", { jobId }),
 };
 
@@ -98,6 +117,21 @@ export type ConnectionProfile = {
 	user: string,
 	password: string,
 	sslMode: SslMode,
+	/**
+	 *  When true, every write command (schema DDL, row insert/update/
+	 *  delete) is rejected at the IPC layer for this connection — see
+	 *  `state::ConnectionRegistry::require_writable`. A safety net for
+	 *  connecting to a database you want to look at but not touch,
+	 *  independent of what the DB user's actual grants allow.
+	 */
+	readOnly?: boolean,
+	/**
+	 *  When set, `host`/`port` above are only ever used as the *target*
+	 *  the SSH tunnel forwards to — the actual TCP connection this app
+	 *  makes goes to a local forwarded port instead. See
+	 *  `domain::connection::service::open_pool_and_verify`.
+	 */
+	sshTunnel?: SshTunnelConfig | null,
 };
 
 export type ConstraintInfo = {
@@ -110,6 +144,15 @@ export type ConstraintInfo = {
 	 */
 	referencedTable: string | null,
 	referencedColumns: string[],
+	/**
+	 *  Set only for `ForeignKey`. `None` reads as the engine's own
+	 *  default (`NO ACTION` on both Postgres and MySQL) rather than
+	 *  `Some(NoAction)` — the two engines report an unset action
+	 *  differently, and downstream code should treat "unset" and
+	 *  "explicitly NO ACTION" the same way either way.
+	 */
+	onUpdate: ForeignKeyAction | null,
+	onDelete: ForeignKeyAction | null,
 	/**
 	 *  Set only for `Check` — the constraint's boolean expression, as the
 	 *  engine reports it back (already-normalized text, not necessarily
@@ -176,8 +219,25 @@ export type DdlStatement = { op: "createTable"; table: string; columns: NewColum
  *  distinct wire protocol — it's Postgres with Neon-friendly defaults
  *  (see `connections/types.ts`'s draft builder) — so it maps to the same
  *  `PostgresDriver` as `Postgres` in `domain/connection/service.rs`.
+ *  `CockroachDb` is the same story: it speaks the Postgres wire protocol
+ *  and its `pg_catalog` shim is close enough that `PostgresDriver`'s
+ *  metadata queries work unmodified (verified against a live CockroachDB
+ *  container in `tests/cockroachdb_metadata.rs`) — matching how
+ *  Beekeeper Studio's own `CockroachClient extends PostgresClient`
+ *  (`temp/apps/studio/src/lib/db/clients/cockroach.ts`) only overrides
+ *  the handful of queries that actually diverge.
+ * 
+ *  `MariaDb` maps to `MySqlDriver` the same way — it speaks the MySQL
+ *  wire protocol, matching Beekeeper's `MariaDBClient extends
+ *  MysqlClient`. One real divergence found by testing against a live
+ *  MariaDB container: `information_schema.columns.column_default`
+ *  returns a quoted-string default (e.g. `'it''s a test'`) still wrapped
+ *  in literal quotes with doubled internal quotes, where real MySQL
+ *  returns the bare unescaped string — see
+ *  `infrastructure::mysql::metadata::unquote_mariadb_default` and
+ *  `tests/mariadb_metadata.rs`.
  */
-export type Engine = "postgres" | "neon" | "my-sql";
+export type Engine = "postgres" | "neon" | "cockroach-db" | "my-sql" | "maria-db";
 
 export type ExportFormat = "csv" | "json" | "sql";
 
@@ -192,6 +252,14 @@ export type FilterOperator = "equals" | "not-equals" | "greater-than" | "greater
 /**  `value` is a comma-separated list; matches if the column equals any of them. */
 "in" | "is-null" | "is-not-null";
 
+/**
+ *  A foreign key's referential action — what happens to a dependent row
+ *  when the referenced row is updated or deleted. Both engines support
+ *  the same five values with the same names, so this is one shared enum
+ *  rather than a per-engine type.
+ */
+export type ForeignKeyAction = "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
+
 export type IndexInfo = {
 	name: string,
 	columns: string[],
@@ -204,7 +272,8 @@ export type IndexInfo = {
  *  column" form. `data_type` is a raw engine-dialect type string (e.g.
  *  `text`, `varchar(255)`, `int8`) — not validated against a fixed enum,
  *  since the set of valid types differs per engine and this app doesn't
- *  maintain its own type catalog.
+ *  maintain its own type catalog — with one synthetic exception, see
+ *  `AUTO_INCREMENT_TYPE`.
  */
 export type NewColumn = {
 	name: string,
@@ -225,6 +294,12 @@ export type NewConstraint = {
 	columns: string[],
 	referencedTable: string | null,
 	referencedColumns: string[],
+	/**
+	 *  Set only for `ForeignKey`. `None` renders as the engine default
+	 *  (no explicit ON UPDATE/ON DELETE clause, i.e. NO ACTION).
+	 */
+	onUpdate: ForeignKeyAction | null,
+	onDelete: ForeignKeyAction | null,
 	checkExpression: string | null,
 };
 
@@ -236,6 +311,25 @@ export type NewIndex = {
 	name: string,
 	columns: string[],
 	isUnique: boolean,
+};
+
+/**
+ *  Exports the full result of a query tab's SQL, re-run in chunks
+ *  straight from the database — never limited to whatever page happens
+ *  to be loaded in the results grid. Mirrors how Beekeeper Studio's
+ *  "Export to File" always re-runs the query rather than exporting the
+ *  rendered grid (see `TabQueryEditor.vue`'s `submitQueryToFile`).
+ */
+export type QueryExportRequest = {
+	connectionId: string,
+	tabId: string,
+	sql: string,
+	directory: string,
+	fileName: string,
+	format: ExportFormat,
+	prettyPrint: boolean,
+	chunkSize: number,
+	deleteOnAbort: boolean,
 };
 
 export type QueryHistoryEntry = {
@@ -256,7 +350,31 @@ export type QueryHistoryStatus = "success" | "error";
  *  string, not a structured value, working around specta's inability
  *  to export `serde_json::Value` without infinite recursion.
  */
-export type QueryResult = { kind: "rows"; columns: string[]; rows: string[][]; rowCount: number; truncated: boolean; durationMs: number } | { kind: "affected"; rowCount: number; durationMs: number };
+export type QueryResult = { kind: "rows"; columns: string[]; 
+/**
+ *  Just the first page — see `db_fetch_query_result_page` for
+ *  the rest, which re-runs the query against the database with
+ *  a different `OFFSET` rather than reading from anything
+ *  cached in memory.
+ */
+rows: string[][]; 
+/**
+ *  The query's total matching row count, when known (see
+ *  `RawQueryResult::Rows::total_row_count`). `None` means this
+ *  result can't be paginated — `rows` is everything there is.
+ */
+totalRowCount: number | null; durationMs: number } | { kind: "affected"; rowCount: number; durationMs: number };
+
+/**
+ *  One page of query results, fetched fresh from the database with
+ *  `LIMIT`/`OFFSET` on the original query text — see
+ *  `db_fetch_query_result_page`.
+ */
+export type QueryResultPage = {
+	columns: string[],
+	rows: string[][],
+	totalRowCount: number,
+};
 
 export type RowsExportRequest = {
 	columns: string[],
@@ -282,6 +400,8 @@ export type SavedConnectionProfile = {
 	database: string,
 	user: string,
 	sslMode: SslMode,
+	readOnly?: boolean,
+	sshTunnel?: SavedSshTunnelConfig | null,
 };
 
 export type SavedQuery = {
@@ -293,7 +413,45 @@ export type SavedQuery = {
 	updatedAt: string,
 };
 
+export type SavedSshTunnelConfig = {
+	host: string,
+	port: number,
+	username: string,
+	authKind: SshAuthKind,
+	/**
+	 *  Only meaningful when `auth_kind` is `PrivateKey` — a file path is
+	 *  not a secret, so unlike the passphrase it's fine to keep in the
+	 *  plain connections store.
+	 */
+	keyPath: string | null,
+};
+
 export type SortDirection = "asc" | "desc";
+
+/**
+ *  How to authenticate to the SSH bastion host in `SshTunnelConfig`.
+ *  Distinct from `ConnectionProfile::password`, which authenticates to
+ *  the *database* — this authenticates to the *jump server* the tunnel
+ *  is opened through.
+ */
+export type SshAuth = { kind: "password"; password: string } | { kind: "privateKey"; keyPath: string; 
+/**  Empty string means the key file is unencrypted. */
+passphrase: string };
+
+export type SshAuthKind = "password" | "private-key";
+
+/**
+ *  Routes the database connection through an SSH bastion/jump host via
+ *  local port forwarding, for databases with no directly reachable
+ *  address (the common case for production/staging databases sitting in
+ *  a private network) — see `infrastructure::ssh::tunnel`.
+ */
+export type SshTunnelConfig = {
+	host: string,
+	port: number,
+	username: string,
+	auth: SshAuth,
+};
 
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
@@ -301,6 +459,16 @@ export type TableExportRequest = {
 	connectionId: string,
 	schema: string,
 	table: string,
+	/**
+	 *  Empty means "whole table" — every row, filters ignored. Non-empty
+	 *  means "filtered view" — the same filters currently applied in the
+	 *  grid, re-run against the database rather than limited to whatever
+	 *  page is loaded. Matches the two scopes Beekeeper Studio's table
+	 *  export menu offers ("Export whole table" / "Export filtered
+	 *  view") — see `TableTable.vue`'s `exportTable`/`exportFiltered`.
+	 */
+	filters: TableFilter[],
+	sort: TableSort[],
 	directory: string,
 	fileName: string,
 	format: ExportFormat,

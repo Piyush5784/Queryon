@@ -11,7 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/app/components/ui/select";
-import type { ConstraintInfo, ConstraintKind } from "@/src/features/schema/api";
+import type { ConstraintInfo, ConstraintKind, ForeignKeyAction } from "@/src/features/schema/api";
+import { type SchemaCapabilities } from "@/src/features/schema/capabilities";
 import { makeTempId, type StagedNewConstraint } from "@/src/features/schema/staging";
 import { getTableColumns, listTables } from "@/src/features/tables/api";
 
@@ -19,6 +20,7 @@ interface ConstraintsTabProps {
   connectionId: string;
   schema: string;
   table: string;
+  capabilities: SchemaCapabilities;
   availableColumns: string[];
   constraints: ConstraintInfo[];
   droppedConstraints: string[];
@@ -38,6 +40,16 @@ const KIND_LABELS: Record<ConstraintKind, string> = {
 
 const KINDS = Object.keys(KIND_LABELS) as ConstraintKind[];
 
+const FK_ACTION_LABELS: Record<ForeignKeyAction, string> = {
+  "no-action": "No Action",
+  restrict: "Restrict",
+  cascade: "Cascade",
+  "set-null": "Set Null",
+  "set-default": "Set Default",
+};
+
+const FK_ACTIONS = Object.keys(FK_ACTION_LABELS) as ForeignKeyAction[];
+
 function constraintText(constraint: ConstraintInfo): string {
   const cols = constraint.columns.join(", ");
   switch (constraint.kind) {
@@ -45,8 +57,15 @@ function constraintText(constraint: ConstraintInfo): string {
       return `PRIMARY KEY (${cols})`;
     case "unique":
       return `UNIQUE (${cols})`;
-    case "foreign-key":
-      return `FOREIGN KEY (${cols}) REFERENCES ${constraint.referencedTable} (${constraint.referencedColumns.join(", ")})`;
+    case "foreign-key": {
+      const onUpdate = constraint.onUpdate && constraint.onUpdate !== "no-action"
+        ? ` ON UPDATE ${FK_ACTION_LABELS[constraint.onUpdate].toUpperCase()}`
+        : "";
+      const onDelete = constraint.onDelete && constraint.onDelete !== "no-action"
+        ? ` ON DELETE ${FK_ACTION_LABELS[constraint.onDelete].toUpperCase()}`
+        : "";
+      return `FOREIGN KEY (${cols}) REFERENCES ${constraint.referencedTable} (${constraint.referencedColumns.join(", ")})${onUpdate}${onDelete}`;
+    }
     case "check":
       return constraint.checkExpression ?? "";
   }
@@ -56,6 +75,7 @@ export function ConstraintsTab({
   connectionId,
   schema,
   table,
+  capabilities,
   availableColumns,
   constraints,
   droppedConstraints,
@@ -107,6 +127,7 @@ export function ConstraintsTab({
             connectionId={connectionId}
             schema={schema}
             table={table}
+            capabilities={capabilities}
             availableColumns={availableColumns}
             constraint={constraint}
             onRemove={() => onRemoveNewRow(constraint.tempId)}
@@ -129,6 +150,7 @@ interface NewConstraintRowProps {
   connectionId: string;
   schema: string;
   table: string;
+  capabilities: SchemaCapabilities;
   availableColumns: string[];
   constraint: StagedNewConstraint;
   onRemove: () => void;
@@ -139,6 +161,7 @@ function NewConstraintRow({
   connectionId,
   schema,
   table,
+  capabilities,
   availableColumns,
   constraint,
   onRemove,
@@ -182,19 +205,34 @@ function NewConstraintRow({
     });
   }
 
+  const nameDisabled = constraint.kind === "primary-key" && !capabilities.primaryKeyHasCustomName;
+
   return (
     <div className="space-y-2 bg-primary/5 px-3 py-2">
       <div className="grid grid-cols-[1fr_110px_2fr_28px] items-start gap-2">
-        <Input
-          value={constraint.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          placeholder="constraint_name"
-          className="h-7 font-mono text-xs"
-          autoFocus
-        />
+        <div>
+          <Input
+            value={constraint.name}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder="constraint_name"
+            className="h-7 font-mono text-xs"
+            disabled={nameDisabled}
+            autoFocus
+          />
+          {nameDisabled && (
+            <p className="mt-1 text-[0.65rem] text-muted-foreground">
+              MySQL always names a primary key &ldquo;PRIMARY&rdquo;
+            </p>
+          )}
+        </div>
         <Select
           value={constraint.kind}
-          onValueChange={(value) => value && onChange({ kind: value as ConstraintKind })}
+          onValueChange={(value) => {
+            if (!value) return;
+            const kind = value as ConstraintKind;
+            const forceName = kind === "primary-key" && !capabilities.primaryKeyHasCustomName;
+            onChange({ kind, ...(forceName ? { name: "PRIMARY" } : {}) });
+          }}
         >
           <SelectTrigger size="sm" className="h-7 w-full text-xs">
             <SelectValue />
@@ -250,6 +288,48 @@ function NewConstraintRow({
                   ))}
                 </div>
               )}
+              <div className="flex gap-2">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[0.65rem] text-muted-foreground">On update</label>
+                  <Select
+                    value={constraint.onUpdate ?? "no-action"}
+                    onValueChange={(value) =>
+                      value && onChange({ onUpdate: value === "no-action" ? null : (value as ForeignKeyAction) })
+                    }
+                  >
+                    <SelectTrigger size="sm" className="h-7 w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FK_ACTIONS.map((action) => (
+                        <SelectItem key={action} value={action}>
+                          {FK_ACTION_LABELS[action]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[0.65rem] text-muted-foreground">On delete</label>
+                  <Select
+                    value={constraint.onDelete ?? "no-action"}
+                    onValueChange={(value) =>
+                      value && onChange({ onDelete: value === "no-action" ? null : (value as ForeignKeyAction) })
+                    }
+                  >
+                    <SelectTrigger size="sm" className="h-7 w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FK_ACTIONS.map((action) => (
+                        <SelectItem key={action} value={action}>
+                          {FK_ACTION_LABELS[action]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
           )}
 
@@ -284,6 +364,8 @@ export function newConstraintRow(): StagedNewConstraint {
     columns: [],
     referencedTable: null,
     referencedColumns: [],
+    onUpdate: null,
+    onDelete: null,
     checkExpression: null,
   };
 }

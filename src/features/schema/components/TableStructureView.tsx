@@ -8,6 +8,7 @@ import { ConstraintsTab, newConstraintRow } from "@/src/features/schema/componen
 import { DdlPreviewDialog } from "@/src/features/schema/components/DdlPreviewDialog";
 import { IndexesTab, newIndexRow } from "@/src/features/schema/components/IndexesTab";
 import { NewTableCreateView } from "@/src/features/schema/components/NewTableCreateView";
+import { capabilitiesFor } from "@/src/features/schema/capabilities";
 import {
   listConstraints,
   listIndexes,
@@ -26,15 +27,18 @@ import {
   type StagedColumnEdit,
 } from "@/src/features/schema/staging";
 import { getTableColumns, type ColumnInfo } from "@/src/features/tables/api";
+import type { Engine } from "@/src/features/connections/types";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 
 interface TableStructureViewProps {
   connectionId: string;
+  engine: Engine;
   schema: string;
   table: string;
 }
 
-export function TableStructureView({ connectionId, schema, table }: TableStructureViewProps) {
+export function TableStructureView({ connectionId, engine, schema, table }: TableStructureViewProps) {
+  const capabilities = capabilitiesFor(engine);
   const [columns, setColumns] = useState<ColumnInfo[] | null>(null);
   const [constraints, setConstraints] = useState<ConstraintInfo[] | null>(null);
   const [indexes, setIndexes] = useState<IndexInfo[] | null>(null);
@@ -214,6 +218,7 @@ export function TableStructureView({ connectionId, schema, table }: TableStructu
     return (
       <NewTableCreateView
         connectionId={connectionId}
+        engine={engine}
         schema={schema}
         onCancel={() => setCreatingTable(false)}
         onCreated={() => {
@@ -266,6 +271,7 @@ export function TableStructureView({ connectionId, schema, table }: TableStructu
               droppedColumns={changes.droppedColumns}
               editedColumns={changes.editedColumns}
               newColumns={changes.newColumns}
+              showAutoIncrement={false}
               onToggleDrop={toggleDropColumn}
               onStartEdit={startEditColumn}
               onCancelEdit={cancelEditColumn}
@@ -318,6 +324,7 @@ export function TableStructureView({ connectionId, schema, table }: TableStructu
               connectionId={connectionId}
               schema={schema}
               table={table}
+              capabilities={capabilities}
               availableColumns={columnNames}
               constraints={constraints}
               droppedConstraints={changes.droppedConstraints}

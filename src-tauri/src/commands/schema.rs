@@ -4,7 +4,8 @@ use tauri::State;
 
 use crate::domain::driver::DatabaseDriver;
 use crate::domain::schema::{
-    service, ColumnInfo, ConstraintInfo, DdlBatchResult, DdlPreview, DdlStatement, IndexInfo, TableRef,
+    service, ColumnInfo, ConstraintInfo, DdlBatchResult, DdlPreview, DdlStatement, IndexInfo,
+    TableRef,
 };
 use crate::error::AppError;
 use crate::state::ConnectionRegistry;
@@ -16,6 +17,17 @@ fn driver_for(
     registry
         .get(connection_id)
         .ok_or_else(|| AppError::new("Not connected — reconnect and try again."))
+}
+
+/// Like `driver_for`, but rejects a read-only connection. Used only by
+/// commands that actually write — `db_render_ddl` stays on `driver_for`
+/// since previewing SQL doesn't touch the database and a read-only
+/// connection should still be able to see what a change would look like.
+fn writable_driver_for(
+    registry: &State<'_, ConnectionRegistry>,
+    connection_id: &str,
+) -> Result<Arc<dyn DatabaseDriver>, AppError> {
+    registry.require_writable(connection_id)
 }
 
 #[tauri::command]
@@ -96,6 +108,6 @@ pub async fn db_execute_ddl(
     statements: Vec<DdlStatement>,
     registry: State<'_, ConnectionRegistry>,
 ) -> Result<DdlBatchResult, AppError> {
-    let driver = driver_for(&registry, &connection_id)?;
+    let driver = writable_driver_for(&registry, &connection_id)?;
     service::execute_ddl(driver.as_ref(), &schema, &statements).await
 }

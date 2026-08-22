@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Instant;
 
-use deadpool_postgres::Pool;
+use deadpool_postgres::{Client, Pool};
 use serde_json::Value as JsonValue;
 
 use crate::domain::driver::DatabaseDriver;
@@ -10,7 +11,7 @@ use crate::domain::schema::{
     ColumnInfo, ConstraintInfo, DdlBatchResult, DdlPreview, DdlStatement, IndexInfo, TableRef,
 };
 use crate::domain::table::{TableFilter, TableRowsResult, TableSort};
-use crate::error::AppError;
+use crate::error::{describe_pg_error, AppError};
 
 use super::{ddl, executor, metadata};
 
@@ -18,11 +19,54 @@ const MAX_PAGE_SIZE: i64 = 10_000;
 
 pub struct PostgresDriver {
     pool: Pool,
+    /// One dedicated connection per tab in manual-commit mode, held
+    /// outside the pool for the life of that tab's transaction — see
+    /// `DatabaseDriver::begin_transaction`'s doc comment for why a
+    /// pooled per-call connection can't support this.
+    reserved: Mutex<HashMap<String, Client>>,
+    /// The backend PID of whichever connection `tab_id` currently has a
+    /// query running on — set right before the query starts, cleared
+    /// right after it finishes. `cancel_query` reads this to know which
+    /// backend to `pg_cancel_backend()`. Populated for every query, not
+    /// just ones inside a manual-commit transaction: a plain auto-commit
+    /// query still needs to be cancelable.
+    running_pids: Mutex<HashMap<String, i32>>,
 }
 
 impl PostgresDriver {
     pub fn new(pool: Pool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            reserved: Mutex::new(HashMap::new()),
+            running_pids: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Runs `sql` on `client`, first recording `client`'s backend PID
+    /// under `tab_id` so a concurrent `cancel_query(tab_id)` call can
+    /// find it, then clearing that record once the query settles either
+    /// way. Shared by both the reserved-connection and pooled-connection
+    /// paths in `execute_query_for_tab` — cancellation works the same
+    /// regardless of which one is in play.
+    async fn execute_query_trackable(
+        &self,
+        tab_id: &str,
+        client: &Client,
+        sql: &str,
+        offset: u64,
+        limit: u64,
+    ) -> Result<RawQueryResult, AppError> {
+        let pid_row = client
+            .query_one("SELECT pg_backend_pid() AS pid", &[])
+            .await
+            .map_err(|e| AppError::new(describe_pg_error(&e)))?;
+        let pid: i32 = pid_row.get("pid");
+        self.running_pids.lock().unwrap().insert(tab_id.to_string(), pid);
+
+        let result = executor::execute_query(client, sql, offset, limit).await;
+
+        self.running_pids.lock().unwrap().remove(tab_id);
+        result
     }
 }
 
@@ -134,7 +178,10 @@ async fn fetch_server_version(pool: &Pool) -> Result<String, AppError> {
         .query_one("SHOW server_version", &[])
         .await
         .map_err(|e| AppError::new(format!("Connected, but failed to query server: {e}")))?;
-    log::info!("fetch_server_version: query took {:?}", query_start.elapsed());
+    log::info!(
+        "fetch_server_version: query took {:?}",
+        query_start.elapsed()
+    );
 
     Ok(row.get::<_, String>(0))
 }
@@ -178,7 +225,10 @@ impl DatabaseDriver for PostgresDriver {
             .get()
             .await
             .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
-        log::info!("list_tables: pool checkout took {:?}", checkout_start.elapsed());
+        log::info!(
+            "list_tables: pool checkout took {:?}",
+            checkout_start.elapsed()
+        );
 
         let query_start = Instant::now();
         let result = metadata::list_tables(&client).await;
@@ -186,7 +236,11 @@ impl DatabaseDriver for PostgresDriver {
         result
     }
 
-    async fn get_table_columns(&self, schema: &str, table: &str) -> Result<Vec<ColumnInfo>, AppError> {
+    async fn get_table_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ColumnInfo>, AppError> {
         let client = self
             .pool
             .get()
@@ -206,7 +260,11 @@ impl DatabaseDriver for PostgresDriver {
         metadata::list_indexes(&client, schema, table).await
     }
 
-    async fn list_constraints(&self, schema: &str, table: &str) -> Result<Vec<ConstraintInfo>, AppError> {
+    async fn list_constraints(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ConstraintInfo>, AppError> {
         validate_identifier(schema)?;
         validate_identifier(table)?;
         let client = self
@@ -228,7 +286,11 @@ impl DatabaseDriver for PostgresDriver {
         metadata::get_table_ddl(&client, schema, table).await
     }
 
-    async fn render_ddl(&self, schema: &str, statements: &[DdlStatement]) -> Result<Vec<DdlPreview>, AppError> {
+    async fn render_ddl(
+        &self,
+        schema: &str,
+        statements: &[DdlStatement],
+    ) -> Result<Vec<DdlPreview>, AppError> {
         validate_identifier(schema)?;
         for statement in statements {
             validate_ddl_statement(statement)?;
@@ -414,7 +476,9 @@ impl DatabaseDriver for PostgresDriver {
 
         let mut insert_values = Vec::with_capacity(values.len());
         for (column, value) in values {
-            let Some(text) = json_to_insert_text(value) else { continue };
+            let Some(text) = json_to_insert_text(value) else {
+                continue;
+            };
             validate_identifier(column)?;
             let column_type = columns
                 .iter()
@@ -427,7 +491,7 @@ impl DatabaseDriver for PostgresDriver {
         executor::insert_row(&client, schema, table, &insert_values).await
     }
 
-    async fn execute_query(&self, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {
+    async fn execute_query(&self, sql: &str, offset: u64, limit: u64) -> Result<RawQueryResult, AppError> {
         if sql.trim().is_empty() {
             return Err(AppError::new("Cannot execute an empty query."));
         }
@@ -438,7 +502,110 @@ impl DatabaseDriver for PostgresDriver {
             .await
             .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
 
-        executor::execute_query(&client, sql, max_rows).await
+        executor::execute_query(&client, sql, offset, limit).await
+    }
+
+    async fn execute_query_for_tab(
+        &self,
+        tab_id: &str,
+        sql: &str,
+        offset: u64,
+        limit: u64,
+    ) -> Result<RawQueryResult, AppError> {
+        if sql.trim().is_empty() {
+            return Err(AppError::new("Cannot execute an empty query."));
+        }
+
+        // Std Mutex guards can't cross an .await point, so the reserved
+        // client is taken out of the map, used, then put back — same
+        // pattern as any other take/replace-under-lock dance.
+        let reserved = self.reserved.lock().unwrap().remove(tab_id);
+        match reserved {
+            Some(client) => {
+                let result = self.execute_query_trackable(tab_id, &client, sql, offset, limit).await;
+                self.reserved.lock().unwrap().insert(tab_id.to_string(), client);
+                result
+            }
+            None => {
+                let client = self
+                    .pool
+                    .get()
+                    .await
+                    .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
+                self.execute_query_trackable(tab_id, &client, sql, offset, limit).await
+            }
+        }
+    }
+
+    async fn cancel_query(&self, tab_id: &str) -> Result<(), AppError> {
+        let pid = self
+            .running_pids
+            .lock()
+            .unwrap()
+            .get(tab_id)
+            .copied()
+            .ok_or_else(|| AppError::new("No query is currently running on this tab."))?;
+
+        // The connection running the query is busy and can't cancel
+        // itself — a separate pooled connection sends the cancel signal
+        // instead, same as Beekeeper Studio's own Postgres cancel path.
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
+        let row = client
+            .query_one("SELECT pg_cancel_backend($1) AS cancelled", &[&pid])
+            .await
+            .map_err(|e| AppError::new(describe_pg_error(&e)))?;
+        let cancelled: bool = row.get("cancelled");
+        if !cancelled {
+            return Err(AppError::new("Could not cancel the query — it may have already finished."));
+        }
+        Ok(())
+    }
+
+    async fn begin_transaction(&self, tab_id: &str) -> Result<(), AppError> {
+        if self.reserved.lock().unwrap().contains_key(tab_id) {
+            return Err(AppError::new("This tab already has an open transaction."));
+        }
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| AppError::new(format!("Connection lost: {e}")))?;
+        client
+            .batch_execute("BEGIN")
+            .await
+            .map_err(|e| AppError::new(describe_pg_error(&e)))?;
+        self.reserved.lock().unwrap().insert(tab_id.to_string(), client);
+        Ok(())
+    }
+
+    async fn commit_transaction(&self, tab_id: &str) -> Result<(), AppError> {
+        let client = self.reserved.lock().unwrap().remove(tab_id).ok_or_else(|| {
+            AppError::new("This tab has no open transaction to commit.")
+        })?;
+        client
+            .batch_execute("COMMIT")
+            .await
+            .map_err(|e| AppError::new(describe_pg_error(&e)))?;
+        Ok(())
+    }
+
+    async fn rollback_transaction(&self, tab_id: &str) -> Result<(), AppError> {
+        let client = self.reserved.lock().unwrap().remove(tab_id).ok_or_else(|| {
+            AppError::new("This tab has no open transaction to roll back.")
+        })?;
+        client
+            .batch_execute("ROLLBACK")
+            .await
+            .map_err(|e| AppError::new(describe_pg_error(&e)))?;
+        Ok(())
+    }
+
+    fn has_active_transaction(&self, tab_id: &str) -> bool {
+        self.reserved.lock().unwrap().contains_key(tab_id)
     }
 }
 

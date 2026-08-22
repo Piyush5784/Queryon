@@ -1,27 +1,53 @@
 use deadpool_postgres::Client;
 
-use crate::domain::schema::{ColumnEdit, ConstraintKind, DdlBatchResult, DdlExecutionResult, DdlPreview, DdlStatement, NewColumn, NewConstraint, NewIndex};
+use crate::domain::schema::{
+    ColumnEdit, ConstraintKind, DdlBatchResult, DdlExecutionResult, DdlPreview, DdlStatement,
+    ForeignKeyAction, NewColumn, NewConstraint, NewIndex, AUTO_INCREMENT_TYPE,
+};
 use crate::error::{describe_pg_error, AppError};
 
 fn quote_ident(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
 }
 
+/// `serial` is already `NOT NULL` with a sequence-backed default, so the
+/// auto-increment pseudo-type ignores `is_nullable`/`default` entirely
+/// rather than rendering a contradictory `serial not null default ...`.
+/// It does not add `primary key` itself — Postgres allows (and this app
+/// already supports) adding that as its own `AddConstraint` statement,
+/// unlike MySQL where the two must be declared together.
 fn render_column_def(column: &NewColumn) -> String {
+    if column.data_type == AUTO_INCREMENT_TYPE {
+        return format!("{} serial", quote_ident(&column.name));
+    }
     let nullability = if column.is_nullable { "" } else { " not null" };
     let default = column
         .default
         .as_ref()
         .map(|d| format!(" default {d}"))
         .unwrap_or_default();
-    format!("{} {}{}{}", quote_ident(&column.name), column.data_type, nullability, default)
+    format!(
+        "{} {}{}{}",
+        quote_ident(&column.name),
+        column.data_type,
+        nullability,
+        default
+    )
 }
 
-fn render_create_table(schema: &str, table: &str, columns: &[NewColumn]) -> Result<String, AppError> {
+fn render_create_table(
+    schema: &str,
+    table: &str,
+    columns: &[NewColumn],
+) -> Result<String, AppError> {
     if columns.is_empty() {
         return Err(AppError::new("A table needs at least one column."));
     }
-    let column_defs = columns.iter().map(render_column_def).collect::<Vec<_>>().join(", ");
+    let column_defs = columns
+        .iter()
+        .map(render_column_def)
+        .collect::<Vec<_>>()
+        .join(", ");
     Ok(format!(
         "create table {}.{} ({});",
         quote_ident(schema),
@@ -87,10 +113,16 @@ fn render_alter_column(schema: &str, table: &str, edit: &ColumnEdit) -> String {
     ));
     statements.push(format!(
         "alter table {table_ref} alter column {target_column} {};",
-        if edit.column.is_nullable { "drop not null" } else { "set not null" }
+        if edit.column.is_nullable {
+            "drop not null"
+        } else {
+            "set not null"
+        }
     ));
     statements.push(match &edit.column.default {
-        Some(default) => format!("alter table {table_ref} alter column {target_column} set default {default};"),
+        Some(default) => {
+            format!("alter table {table_ref} alter column {target_column} set default {default};")
+        }
         None => format!("alter table {table_ref} alter column {target_column} drop default;"),
     });
 
@@ -99,7 +131,12 @@ fn render_alter_column(schema: &str, table: &str, edit: &ColumnEdit) -> String {
 
 fn render_add_index(schema: &str, table: &str, index: &NewIndex) -> String {
     let unique = if index.is_unique { "unique " } else { "" };
-    let cols = index.columns.iter().map(|c| quote_ident(c)).collect::<Vec<_>>().join(", ");
+    let cols = index
+        .columns
+        .iter()
+        .map(|c| quote_ident(c))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         "create {unique}index {} on {}.{} ({});",
         quote_ident(&index.name),
@@ -113,8 +150,27 @@ fn render_drop_index(schema: &str, index: &str) -> String {
     format!("drop index {}.{};", quote_ident(schema), quote_ident(index))
 }
 
-fn render_add_constraint(schema: &str, table: &str, constraint: &NewConstraint) -> Result<String, AppError> {
-    let cols = constraint.columns.iter().map(|c| quote_ident(c)).collect::<Vec<_>>().join(", ");
+fn render_foreign_key_action(action: ForeignKeyAction) -> &'static str {
+    match action {
+        ForeignKeyAction::NoAction => "no action",
+        ForeignKeyAction::Restrict => "restrict",
+        ForeignKeyAction::Cascade => "cascade",
+        ForeignKeyAction::SetNull => "set null",
+        ForeignKeyAction::SetDefault => "set default",
+    }
+}
+
+fn render_add_constraint(
+    schema: &str,
+    table: &str,
+    constraint: &NewConstraint,
+) -> Result<String, AppError> {
+    let cols = constraint
+        .columns
+        .iter()
+        .map(|c| quote_ident(c))
+        .collect::<Vec<_>>()
+        .join(", ");
     let clause = match constraint.kind {
         ConstraintKind::PrimaryKey => format!("primary key ({cols})"),
         ConstraintKind::Unique => format!("unique ({cols})"),
@@ -129,7 +185,18 @@ fn render_add_constraint(schema: &str, table: &str, constraint: &NewConstraint) 
                 .map(|c| quote_ident(c))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("foreign key ({cols}) references {} ({ref_cols})", quote_ident(ref_table))
+            let on_update = constraint
+                .on_update
+                .map(|a| format!(" on update {}", render_foreign_key_action(a)))
+                .unwrap_or_default();
+            let on_delete = constraint
+                .on_delete
+                .map(|a| format!(" on delete {}", render_foreign_key_action(a)))
+                .unwrap_or_default();
+            format!(
+                "foreign key ({cols}) references {} ({ref_cols}){on_update}{on_delete}",
+                quote_ident(ref_table)
+            )
         }
         ConstraintKind::Check => {
             let expr = constraint
@@ -160,15 +227,21 @@ fn render_drop_constraint(schema: &str, table: &str, constraint: &str) -> String
 pub fn render(schema: &str, statement: &DdlStatement) -> Result<String, AppError> {
     match statement {
         DdlStatement::CreateTable { table, columns } => render_create_table(schema, table, columns),
-        DdlStatement::RenameTable { table, new_name } => Ok(render_rename_table(schema, table, new_name)),
+        DdlStatement::RenameTable { table, new_name } => {
+            Ok(render_rename_table(schema, table, new_name))
+        }
         DdlStatement::DropTable { table } => Ok(render_drop_table(schema, table)),
         DdlStatement::AddColumn { table, column } => Ok(render_add_column(schema, table, column)),
         DdlStatement::DropColumn { table, column } => Ok(render_drop_column(schema, table, column)),
         DdlStatement::AlterColumn { table, edit } => Ok(render_alter_column(schema, table, edit)),
         DdlStatement::AddIndex { table, index } => Ok(render_add_index(schema, table, index)),
         DdlStatement::DropIndex { index, .. } => Ok(render_drop_index(schema, index)),
-        DdlStatement::AddConstraint { table, constraint } => render_add_constraint(schema, table, constraint),
-        DdlStatement::DropConstraint { table, constraint } => Ok(render_drop_constraint(schema, table, constraint)),
+        DdlStatement::AddConstraint { table, constraint } => {
+            render_add_constraint(schema, table, constraint)
+        }
+        DdlStatement::DropConstraint { table, constraint } => {
+            Ok(render_drop_constraint(schema, table, constraint))
+        }
     }
 }
 
@@ -184,10 +257,12 @@ pub async fn execute_all(
     schema: &str,
     statements: &[DdlStatement],
 ) -> Result<DdlBatchResult, AppError> {
-    let txn = client
-        .transaction()
-        .await
-        .map_err(|e| AppError::new(format!("Could not start transaction: {}", describe_pg_error(&e))))?;
+    let txn = client.transaction().await.map_err(|e| {
+        AppError::new(format!(
+            "Could not start transaction: {}",
+            describe_pg_error(&e)
+        ))
+    })?;
 
     let mut results = Vec::with_capacity(statements.len());
     let mut failed = false;
@@ -211,7 +286,11 @@ pub async fn execute_all(
         };
 
         match txn.batch_execute(&sql).await {
-            Ok(()) => results.push(DdlExecutionResult { sql, success: true, error: None }),
+            Ok(()) => results.push(DdlExecutionResult {
+                sql,
+                success: true,
+                error: None,
+            }),
             Err(e) => {
                 results.push(DdlExecutionResult {
                     sql,
@@ -233,6 +312,8 @@ pub async fn execute_all(
             .map_err(|e| AppError::new(format!("Commit failed: {}", describe_pg_error(&e))))?;
     }
 
-    Ok(DdlBatchResult { results, rolled_back: failed })
+    Ok(DdlBatchResult {
+        results,
+        rolled_back: failed,
+    })
 }
-

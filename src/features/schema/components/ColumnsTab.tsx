@@ -2,6 +2,14 @@ import { useState } from "react";
 import { Pencil, Plus, RotateCcw, X } from "lucide-react";
 
 import { Button } from "@/src/app/components/ui/button";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/src/app/components/ui/combobox";
 import { Input } from "@/src/app/components/ui/input";
 import {
   Select,
@@ -26,52 +34,48 @@ const COMMON_TYPES = [
   "jsonb",
 ] as const;
 
-const CUSTOM_TYPE = "__custom__";
+export const AUTO_INCREMENT_TYPE = "auto-increment";
 
-function DataTypeField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const isCustom = value !== "" && !COMMON_TYPES.includes(value as (typeof COMMON_TYPES)[number]);
-  const [customMode, setCustomMode] = useState(isCustom);
-
-  if (customMode) {
-    return (
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="text, varchar(255), int8, ..."
-        className="h-7 font-mono text-xs"
-        onBlur={() => {
-          if (!value.trim()) setCustomMode(false);
-        }}
-      />
-    );
-  }
+// A free-text combobox, not a strict dropdown: the type list is shown as
+// suggestions, but whatever the user types is the value directly — no
+// separate "Custom…" mode to switch into first (see Beekeeper Studio's
+// own column-type field, which uses the same freetext-autocomplete
+// pattern rather than a picklist-or-freeform toggle).
+function DataTypeField({
+  value,
+  onChange,
+  showAutoIncrement,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  showAutoIncrement: boolean;
+}) {
+  const items = showAutoIncrement ? [AUTO_INCREMENT_TYPE, ...COMMON_TYPES] : COMMON_TYPES;
 
   return (
-    <Select
-      value={value || undefined}
-      onValueChange={(next) => {
-        if (!next) return;
-        if (next === CUSTOM_TYPE) {
-          setCustomMode(true);
-          return;
-        }
-        onChange(next);
-      }}
+    <Combobox
+      items={items}
+      inputValue={value}
+      onInputValueChange={onChange}
+      value={value}
+      onValueChange={(next) => next && onChange(next)}
     >
-      <SelectTrigger size="sm" className="h-7 w-full font-mono text-xs">
-        <SelectValue placeholder="Select type" />
-      </SelectTrigger>
-      <SelectContent>
-        {COMMON_TYPES.map((type) => (
-          <SelectItem key={type} value={type} className="font-mono text-xs">
-            {type}
-          </SelectItem>
-        ))}
-        <SelectItem value={CUSTOM_TYPE} className="text-xs">
-          Custom…
-        </SelectItem>
-      </SelectContent>
-    </Select>
+      <ComboboxInput
+        placeholder="text, varchar(255), int8, ..."
+        className="h-7 font-mono text-xs"
+        showTrigger={false}
+      />
+      <ComboboxContent>
+        <ComboboxEmpty>Press Enter to use this type</ComboboxEmpty>
+        <ComboboxList>
+          {(type: string) => (
+            <ComboboxItem key={type} value={type} className="font-mono text-xs">
+              {type === AUTO_INCREMENT_TYPE ? "Auto Increment" : type}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }
 
@@ -149,6 +153,13 @@ interface ColumnsTabProps {
   droppedColumns: string[];
   editedColumns: StagedColumnEdit[];
   newColumns: StagedNewColumn[];
+  // Auto Increment only ever appears as an option on a brand-new column
+  // of a brand-new table — see AUTO_INCREMENT_TYPE's doc comment in
+  // domain/schema/models.rs for why: MySQL requires it declared as a key
+  // in the same CREATE TABLE, so adding it to an existing table (via
+  // ALTER TABLE ADD COLUMN) or offering it in the column-edit form would
+  // just produce a statement MySQL rejects.
+  showAutoIncrement: boolean;
   onToggleDrop: (column: string) => void;
   onStartEdit: (column: ColumnInfo) => void;
   onCancelEdit: (currentName: string) => void;
@@ -165,6 +176,7 @@ export function ColumnsTab({
   droppedColumns,
   editedColumns,
   newColumns,
+  showAutoIncrement,
   onToggleDrop,
   onStartEdit,
   onCancelEdit,
@@ -205,6 +217,7 @@ export function ColumnsTab({
                 <DataTypeField
                   value={edit.column.dataType}
                   onChange={(dataType) => onChangeEdit(column.name, { dataType })}
+                  showAutoIncrement={false}
                 />
                 <NullableField
                   value={edit.column.isNullable}
@@ -282,15 +295,25 @@ export function ColumnsTab({
             <DataTypeField
               value={column.dataType}
               onChange={(dataType) => onChangeNewRow(column.tempId, { dataType })}
+              showAutoIncrement={showAutoIncrement}
             />
-            <NullableField
-              value={column.isNullable}
-              onChange={(isNullable) => onChangeNewRow(column.tempId, { isNullable })}
-            />
-            <DefaultField
-              value={column.default}
-              onChange={(value) => onChangeNewRow(column.tempId, { default: value })}
-            />
+            {column.dataType === AUTO_INCREMENT_TYPE ? (
+              <>
+                <span className="truncate text-xs text-muted-foreground">Not null</span>
+                <span className="truncate font-mono text-xs text-muted-foreground">auto</span>
+              </>
+            ) : (
+              <>
+                <NullableField
+                  value={column.isNullable}
+                  onChange={(isNullable) => onChangeNewRow(column.tempId, { isNullable })}
+                />
+                <DefaultField
+                  value={column.default}
+                  onChange={(value) => onChangeNewRow(column.tempId, { default: value })}
+                />
+              </>
+            )}
             <span className="truncate text-xs text-muted-foreground">—</span>
             <div />
             <button

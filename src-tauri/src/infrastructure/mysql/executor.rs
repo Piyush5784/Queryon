@@ -190,32 +190,127 @@ pub async fn count_rows(
     Ok(count as u64)
 }
 
-pub async fn execute_query(pool: &MySqlPool, sql: &str, max_rows: usize) -> Result<RawQueryResult, AppError> {
+/// Runs `sql` on `conn`, fetching only `limit` rows starting at
+/// `offset`. A SELECT-shaped `sql` is wrapped as a single subquery that
+/// pages with `LIMIT`/`OFFSET` and counts the total via `COUNT(*) OVER()`
+/// in the same pass — see `execute_query_page`. A write/DDL statement
+/// just executes once, ignoring `offset`/`limit`.
+///
+/// Takes `&mut MySqlConnection` rather than a generic `sqlx::Executor` so
+/// the zero-rows fallback (a second, plain `COUNT(*)`, see
+/// `execute_query_page`) can reuse the same connection — a bare
+/// `Executor` is consumed by value per call.
+pub async fn execute_query(
+    conn: &mut sqlx::MySqlConnection,
+    sql: &str,
+    offset: u64,
+    limit: u64,
+) -> Result<RawQueryResult, AppError> {
     if !looks_like_select(sql) {
         let result = sqlx::query(AssertSqlSafe(sql))
-            .execute(pool)
+            .execute(&mut *conn)
             .await
             .map_err(|e| AppError::new(clean_mysql_error(&e)))?;
         return Ok(RawQueryResult::Affected { row_count: result.rows_affected() });
     }
 
-    let rows = sqlx::query(AssertSqlSafe(sql))
-        .fetch_all(pool)
-        .await
-        .map_err(|e| AppError::new(clean_mysql_error(&e)))?;
+    match execute_query_page(conn, sql, offset, limit).await {
+        Ok(result) => Ok(result),
+        Err(WrapOrRuntimeError::Runtime(e)) => Err(AppError::new(clean_mysql_error(&e))),
+        Err(WrapOrRuntimeError::Wrap) => {
+            // `sql` can't be wrapped as a subquery (rare — some
+            // statement shapes are only valid at the top level). Fall
+            // back to running it unwrapped, once, unpaginated.
+            let rows = sqlx::query(AssertSqlSafe(sql))
+                .fetch_all(&mut *conn)
+                .await
+                .map_err(|e| AppError::new(clean_mysql_error(&e)))?;
+            let columns = rows
+                .first()
+                .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect::<Vec<_>>())
+                .unwrap_or_default();
+            let json_rows = rows
+                .iter()
+                .map(|row| (0..row.len()).map(|i| mysql_value_to_json(row, i)).collect::<Vec<_>>())
+                .collect::<Vec<_>>();
+            Ok(RawQueryResult::Rows { columns, rows: json_rows, total_row_count: None })
+        }
+    }
+}
 
-    let columns = rows
+/// Distinguishes "the wrapped SQL itself doesn't parse — `sql` can't be
+/// used as a subquery" (worth retrying unwrapped) from any other failure
+/// while running it, cancellation included (must propagate, not be
+/// swallowed by a silent retry that re-runs the query a second time).
+/// MySQL error 1064 is `ER_PARSE_ERROR`; 1149 is a syntax-adjacent
+/// `ER_SYNTAX_ERROR` some server versions report instead.
+enum WrapOrRuntimeError {
+    Wrap,
+    Runtime(sqlx::Error),
+}
+
+fn classify_wrap_error(e: sqlx::Error) -> WrapOrRuntimeError {
+    let is_syntax_error = e
+        .as_database_error()
+        .and_then(|db_err| db_err.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>())
+        .map(|mysql_err| matches!(mysql_err.number(), 1064 | 1149))
+        .unwrap_or(false);
+    if is_syntax_error {
+        WrapOrRuntimeError::Wrap
+    } else {
+        WrapOrRuntimeError::Runtime(e)
+    }
+}
+
+/// Wraps `sql` as a single query that both counts the total (via
+/// `count(*) over()`, computed once per row already being scanned — no
+/// second full execution) and pages the rows via `LIMIT`/`OFFSET`, so
+/// `sql` runs against the database exactly once per page fetched.
+async fn execute_query_page(
+    conn: &mut sqlx::MySqlConnection,
+    sql: &str,
+    offset: u64,
+    limit: u64,
+) -> Result<RawQueryResult, WrapOrRuntimeError> {
+    let page_sql =
+        format!("select *, count(*) over() as __total_row_count from ({sql}) as q limit {limit} offset {offset}");
+    let rows = sqlx::query(AssertSqlSafe(page_sql))
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(classify_wrap_error)?;
+
+    let all_columns: Vec<String> = rows
         .first()
         .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect::<Vec<_>>())
         .unwrap_or_default();
-    let row_count = rows.len();
+    let total_col_index = all_columns.len().saturating_sub(1);
+    let columns = all_columns.get(..total_col_index).unwrap_or_default().to_vec();
+
+    // With zero matching rows the LIMIT/OFFSET query returns no rows at
+    // all, so `count(*) over()` never appears — a plain, uncounted
+    // COUNT(*) is the only way to learn the true total in that case.
+    let total: i64 = match rows.first() {
+        Some(row) => row.try_get(total_col_index).map_err(WrapOrRuntimeError::Runtime)?,
+        None => {
+            let count_sql = format!("select count(*) from ({sql}) as q");
+            let count_row = sqlx::query(AssertSqlSafe(count_sql))
+                .fetch_one(&mut *conn)
+                .await
+                .map_err(WrapOrRuntimeError::Runtime)?;
+            count_row.try_get(0).map_err(WrapOrRuntimeError::Runtime)?
+        }
+    };
+
     let json_rows = rows
         .iter()
-        .take(max_rows)
-        .map(|row| (0..row.len()).map(|i| mysql_value_to_json(row, i)).collect::<Vec<_>>())
+        .map(|row| (0..total_col_index).map(|i| mysql_value_to_json(row, i)).collect::<Vec<_>>())
         .collect::<Vec<_>>();
 
-    Ok(RawQueryResult::Rows { columns, rows: json_rows, row_count })
+    Ok(RawQueryResult::Rows {
+        columns,
+        rows: json_rows,
+        total_row_count: Some(total as usize),
+    })
 }
 
 fn looks_like_select(sql: &str) -> bool {

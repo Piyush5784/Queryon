@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle } from "lucide-react";
 
 import { Button } from "@/src/app/components/ui/button";
+import { toast } from "@/src/app/components/ui/toast";
 import {
   Dialog,
   DialogContent,
@@ -74,7 +75,26 @@ export function DdlPreviewDialog({
       setResults(batch.results);
       setRolledBack(batch.rolledBack);
       if (batch.results.every((r) => r.success)) {
+        const count = batch.results.length;
+        toast.add({
+          type: "success",
+          title: "Schema updated",
+          description: `${count} statement${count === 1 ? "" : "s"} applied successfully`,
+        });
         onExecuted();
+      } else if (batch.rolledBack) {
+        toast.add({
+          type: "error",
+          title: "Schema change failed",
+          description: "The batch was rolled back — nothing was applied.",
+        });
+      } else {
+        const failed = batch.results.filter((r) => !r.success).length;
+        toast.add({
+          type: "error",
+          title: "Schema change failed",
+          description: `${failed} of ${batch.results.length} statements failed`,
+        });
       }
     } catch (err) {
       setError(toErrorMessage(err));
