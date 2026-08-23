@@ -1,0 +1,296 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: queryon-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: devdb
+    ports:
+      - "55434:5432"
+    volumes:
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d devdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-samples:
+    image: postgres:16
+    container_name: queryon-pg-samples
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: samples
+    ports:
+      - "55435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d samples"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mysql:
+    image: mysql:8.4
+    container_name: queryon-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: devpass
+      MYSQL_DATABASE: devdb
+      MYSQL_USER: devuser
+      MYSQL_PASSWORD: devpass
+    ports:
+      - "33066:3306"
+    volumes:
+      - ./docker/initdb-mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "devuser", "-pdevpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mariadb:
+    # MariaDB reuses MySqlDriver entirely (same wire protocol) — this
+    # container exists only to verify the handful of catalog-query
+    # differences (see infrastructure/mysql/metadata.rs) against a real
+    # MariaDB server, the way Beekeeper's MariaDBClient extends MysqlClient.
+    image: mariadb:11
+    container_name: queryon-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: devpass
+      MARIADB_DATABASE: devdb
+      MARIADB_USER: devuser
+      MARIADB_PASSWORD: devpass
+    ports:
+      - "33077:3306"
+    volumes:
+      - ./docker/initdb-mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "devuser", "-pdevpass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  tidb:
+    # Single-node unistore mode (no PD/TiKV needed) — TiDB speaks the
+    # MySQL wire protocol, so this reuses MySqlDriver entirely, matching
+    # Beekeeper's TiDBClient extends MysqlClient (no overrides at all).
+    image: pingcap/tidb:latest
+    container_name: queryon-tidb
+    restart: unless-stopped
+    command: ["-store=unistore", "-path="]
+    ports:
+      - "44000:4000"
+    healthcheck:
+      # No mysqladmin/nc/curl in this image — a raw TCP connect via
+      # /dev/tcp is the only thing available.
+      test: ["CMD-SHELL", "sh -c 'exec 3<>/dev/tcp/127.0.0.1/4000'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  tidb-init:
+    # TiDB's image has no docker-entrypoint-initdb.d convention (like
+    # CockroachDB) — schema applied by this one-shot service instead.
+    image: mariadb:11
+    container_name: queryon-tidb-init
+    depends_on:
+      tidb:
+        condition: service_healthy
+    volumes:
+      - ./docker/initdb-mysql:/initdb:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mariadb --skip-ssl -h tidb -P 4000 -u root -e "create database if not exists devdb; create user if not exists 'devuser'@'%' identified by 'devpass'; grant all on devdb.* to 'devuser'@'%';"
+        for f in /initdb/*.sql; do
+          mariadb --skip-ssl -h tidb -P 4000 -u devuser -pdevpass devdb < "$$f" || exit 1
+        done
+    restart: "no"
+
+  cockroachdb:
+    image: cockroachdb/cockroach:latest-v23.2
+    container_name: queryon-cockroachdb
+    restart: unless-stopped
+    command: start-single-node --insecure
+    environment:
+      COCKROACH_DATABASE: devdb
+      COCKROACH_USER: devuser
+    ports:
+      - "26257:26257"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health?ready=1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cockroachdb-init:
+    # CockroachDB's image has no docker-entrypoint-initdb.d convention
+    # (unlike the Postgres/MySQL images above), so the seed schema is
+    # applied by this one-shot service instead — runs once after
+    # cockroachdb is healthy, then exits. Not idempotent (CREATE TABLE
+    # isn't IF NOT EXISTS, matching 01_schema.sql for Postgres) — re-run
+    # only against a fresh cockroachdb container/volume.
+    image: cockroachdb/cockroach:latest-v23.2
+    container_name: queryon-cockroachdb-init
+    depends_on:
+      cockroachdb:
+        condition: service_healthy
+    volumes:
+      - ./docker/initdb-cockroachdb:/initdb:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for f in /initdb/*.sql; do
+          ./cockroach sql --insecure --host=cockroachdb:26257 -d devdb -f "$$f" || exit 1
+        done
+    restart: "no"
+
+  greengage:
+    image: woblerr/greengage:6.31.0
+    container_name: queryon-greengage
+    restart: unless-stopped
+    environment:
+      GREENPLUM_USER: devuser
+      GREENPLUM_PASSWORD: devpass
+      GREENPLUM_DATABASE_NAME: devdb
+    ports:
+      - "55433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "su - devuser -c 'psql -d devdb -c \"select 1\"' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+
+  greengage-init:
+    # GreengageDB's image has no docker-entrypoint-initdb.d convention and
+    # only runs psql as the devuser OS user (not root), so the seed schema
+    # is applied by this one-shot service instead — runs once after
+    # greengage is healthy, then exits. Not idempotent, matching the other
+    # engines' init services — re-run only against a fresh container/volume.
+    image: woblerr/greengage:6.31.0
+    container_name: queryon-greengage-init
+    depends_on:
+      greengage:
+        condition: service_healthy
+    volumes:
+      - ./docker/initdb-greengage:/initdb:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for f in /initdb/*.sql; do
+          PGPASSWORD=devpass /usr/local/greenplum-db/bin/psql -h greengage -U devuser -d devdb -f "$$f" || exit 1
+        done
+    restart: "no"
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: queryon-mssql
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "DevPass123!"
+      MSSQL_PID: Developer
+    ports:
+      - "14330:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  mssql-init:
+    # SQL Server's image has no docker-entrypoint-initdb.d convention, so
+    # the seed schema is applied by this one-shot service instead — runs
+    # once after mssql is healthy, then exits. Not idempotent (the schema
+    # starts with CREATE DATABASE devdb, matching every other engine's
+    # 01_schema.sql) — re-run only against a fresh mssql container/volume.
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: queryon-mssql-init
+    depends_on:
+      mssql:
+        condition: service_healthy
+    volumes:
+      - ./docker/initdb-mssql:/initdb:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        for f in /initdb/*.sql; do
+          /opt/mssql-tools18/bin/sqlcmd -S mssql -U sa -P 'DevPass123!' -C -i "$$f" || exit 1
+        done
+    restart: "no"
+
+  clickhouse:
+    # No companion -init service, same as StarRocks below — the official
+    # image's docker-entrypoint-initdb.d convention exists but was
+    # confirmed live to silently fail on this schema file (tables never
+    # appear, no error surfaced in the container logs either), so this
+    # doesn't rely on it. Load docker/initdb-clickhouse/01_schema.sql by
+    # hand (`docker exec -i queryon-clickhouse clickhouse-client --user
+    # devuser --password devpass --database devdb --multiquery <
+    # docker/initdb-clickhouse/01_schema.sql`) once the container is
+    # healthy, then run scripts/seed-clickhouse.sh for bulk rows.
+    image: clickhouse/clickhouse-server:latest
+    container_name: queryon-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: devuser
+      CLICKHOUSE_PASSWORD: devpass
+      CLICKHOUSE_DB: devdb
+    ports:
+      - "48123:8123"
+      - "49000:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- 'http://devuser:devpass@localhost:8123/?query=SELECT%201' | grep -q 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  starrocks:
+    # No companion -init service, unlike every other engine here — schema
+    # loading needs StarRocks-specific handling `docker compose up` can't
+    # express: DDL (CREATE INDEX included) is asynchronous, and the next
+    # DDL statement on the same table fails if the previous one's
+    # background job hasn't finished, confirmed live. Run
+    # scripts/seed-starrocks.sh after this container is healthy instead —
+    # it already loads the schema (statement-by-statement, polling each
+    # schema change to completion) before bulk-seeding.
+    image: starrocks/allin1-ubuntu:latest
+    container_name: queryon-starrocks
+    restart: unless-stopped
+    ports:
+      - "39030:9030"
+      - "38030:8030"
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 9030 -u root -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  ssh-bastion:
+    image: linuxserver/openssh-server:latest
+    container_name: queryon-ssh-bastion
+    restart: unless-stopped
+    environment:
+      PUID: 1000
+      PGID: 1000
+      PASSWORD_ACCESS: "true"
+      USER_NAME: tunneluser
+      USER_PASSWORD: tunnelpass
+    volumes:
+      # Enables AllowTcpForwarding, off by default in this image — see
+      # the script itself for why.
+      - ./docker/ssh-bastion/custom-cont-init.d:/custom-cont-init.d:ro
+      # Public half of tests/fixtures/test_ssh_key, so the private-key
+      # auth path in tests/ssh_tunnel.rs has something to authenticate
+      # against.
+      - ./docker/ssh-bastion/authorized_keys:/config/.ssh/authorized_keys:ro
+    ports:
+      - "22222:2222"

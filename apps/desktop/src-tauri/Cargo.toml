@@ -1,0 +1,50 @@
+[package]
+name = "queryon"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "queryon_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
+tokio-postgres = { version = "0.7.18", features = ["with-serde_json-1", "with-chrono-0_4", "with-uuid-1"] }
+deadpool-postgres = "0.14.1"
+tokio-postgres-rustls = "0.14.0"
+rustls = { version = "0.23.43", default-features = false, features = ["ring"] }
+rustls-native-certs = "0.8.4"
+uuid = { version = "1.24.1", features = ["v4", "serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+log = "0.4.33"
+env_logger = "0.11.11"
+specta = { version = "2.0.0-rc.25", features = ["derive", "serde_json"] }
+tauri-specta = { version = "2.0.0-rc.25", features = ["derive", "typescript"] }
+specta-typescript = "0.0.12"
+tauri-plugin-store = "2"
+keyring = "4"
+async-trait = "0.1"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "mysql", "sqlite", "chrono", "json", "rust_decimal"] }
+rust_decimal = "1"
+tauri-plugin-dialog = "2"
+russh = "0.63.0"
+tiberius = { version = "0.12.3", default-features = false, features = ["tds73", "rustls", "chrono"] }
+deadpool = { version = "0.13.0", features = ["rt_tokio_1"] }
+tokio-util = { version = "0.7.19", features = ["compat"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+duckdb = "~1.10505.0"
+
