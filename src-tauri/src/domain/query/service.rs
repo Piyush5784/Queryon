@@ -11,25 +11,8 @@ use super::models::{
     RawQueryResult, SavedQuery,
 };
 
-/// How many rows a page holds — both the initial response from
-/// `execute_query`/`execute_query_for_tab` and every later page fetched
-/// via `db_fetch_query_result_page`. Matches the row count most desktop
-/// SQL clients (Beekeeper, pgAdmin, DBeaver) show per page by default.
-/// Real pagination: the database only ever computes/returns this many
-/// rows per call, via `LIMIT`/`OFFSET` on the (possibly wrapped) query —
-/// nothing is cached in memory between pages.
 pub const PAGE_SIZE: u64 = 1000;
 
-/// Whether `sql` looks safe to run against a read-only connection.
-///
-/// This is a heuristic, not a security boundary against a malicious
-/// query — a `WITH x AS (INSERT ... RETURNING ...) SELECT * FROM x` is a
-/// write disguised as a read, and no client-side prefix check catches
-/// that. It exists to stop the ordinary case (typing `DELETE`/`UPDATE`/
-/// `DROP`/etc. against a connection marked read-only) with a clear error
-/// instead of relying on the database user's own grants. Allowlist
-/// rather than denylist on purpose: an unrecognized statement is
-/// rejected, not passed through.
 pub fn is_read_only_statement(sql: &str) -> bool {
     let trimmed = sql.trim_start().to_lowercase();
     trimmed.starts_with("select")
@@ -50,9 +33,6 @@ pub async fn execute_query(driver: &dyn DatabaseDriver, sql: &str) -> Result<Que
     Ok(to_query_result(raw, duration_ms))
 }
 
-/// Like `execute_query`, but runs on `tab_id`'s reserved connection when
-/// one exists (manual-commit mode) instead of any pooled connection —
-/// see `DatabaseDriver::execute_query_for_tab`.
 pub async fn execute_query_for_tab(
     driver: &dyn DatabaseDriver,
     tab_id: &str,
@@ -73,12 +53,6 @@ pub async fn cancel_query(driver: &dyn DatabaseDriver, tab_id: &str) -> Result<(
     driver.cancel_query(tab_id).await
 }
 
-/// Re-runs `tab_id`'s last query against the database with a different
-/// `OFFSET`, via the same reserved-connection-or-pooled routing as
-/// `execute_query_for_tab` — a fresh `LIMIT`/`OFFSET` round trip, not a
-/// read from anything cached in memory. Errors if the tab has no
-/// remembered SQL (rerun the query first) or if the query can't be
-/// wrapped for paging (see `RawQueryResult::Rows::total_row_count`).
 pub async fn page_query_result(
     driver: &dyn DatabaseDriver,
     cache: &crate::state::QueryResultCache,

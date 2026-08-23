@@ -155,6 +155,14 @@ export async function pickSshKeyFile(): Promise<string | null> {
   return unwrap(await commands.sshPickKeyFile());
 }
 
+export async function pickSqliteFile(): Promise<string | null> {
+  return unwrap(await commands.dbPickSqliteFile());
+}
+
+export async function pickDuckdbFile(): Promise<string | null> {
+  return unwrap(await commands.dbPickDuckdbFile());
+}
+
 export async function listTables(connectionId: string): Promise<TableRef[]> {
   return unwrap(await commands.dbListTables(connectionId));
 }

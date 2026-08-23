@@ -28,9 +28,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/app/components/ui/select";
-import { connect, pickSshKeyFile, saveConnection, testConnection } from "@/src/features/connections/api";
+import { connect, pickDuckdbFile, pickSshKeyFile, pickSqliteFile, saveConnection, testConnection } from "@/src/features/connections/api";
 import {
   createEmptyConnectionDraft,
+  isFileBasedEngine,
   parseConnectionUrl,
   urlSchemeFor,
   type ConnectionProfile,
@@ -66,9 +67,31 @@ const SSL_MODES: { value: SslMode; label: string }[] = [
 const DEV_URLS: Record<Engine, string> = {
   postgres: "postgres://devuser:devpass@localhost:55434/devdb",
   "my-sql": "mysql://devuser:devpass@localhost:33066/devdb",
+  sqlite: "",
   neon: "postgres://devuser:devpass@localhost:55434/devdb",
   "cockroach-db": "postgres://devuser@localhost:26257/devdb?sslmode=disable",
+  "greengage-db": "postgres://devuser:devpass@localhost:55433/devdb",
   "maria-db": "mysql://devuser:devpass@localhost:33077/devdb",
+  "ti-db": "mysql://devuser:devpass@localhost:44000/devdb",
+  "sql-server": "",
+  "star-rocks": "mysql://root:devpass@localhost:39030/devdb",
+  "click-house": "http://devuser:devpass@localhost:48123/devdb",
+  "duck-db": "",
+};
+
+const FIELD_PLACEHOLDERS: Record<Engine, { database: string; user: string }> = {
+  postgres: { database: "postgres", user: "postgres" },
+  neon: { database: "postgres", user: "postgres" },
+  "cockroach-db": { database: "postgres", user: "postgres" },
+  "greengage-db": { database: "postgres", user: "postgres" },
+  "my-sql": { database: "mysql", user: "root" },
+  "maria-db": { database: "mysql", user: "root" },
+  "ti-db": { database: "mysql", user: "root" },
+  "star-rocks": { database: "mysql", user: "root" },
+  sqlite: { database: "postgres", user: "postgres" },
+  "sql-server": { database: "master", user: "sa" },
+  "click-house": { database: "default", user: "default" },
+  "duck-db": { database: "postgres", user: "postgres" },
 };
 
 export function ConnectionDialog({
@@ -145,6 +168,21 @@ export function ConnectionDialog({
     }
   }
 
+  async function handleChooseDatabaseFile() {
+    try {
+      const chosen = engine === "duck-db" ? await pickDuckdbFile() : await pickSqliteFile();
+      if (chosen) {
+        update("database", chosen);
+        if (!draft.name.trim()) {
+          const fileName = chosen.split(/[/\\]/).pop() ?? chosen;
+          update("name", fileName.replace(/\.(db|sqlite|sqlite3|duckdb)$/i, ""));
+        }
+      }
+    } catch (err) {
+      setStatus({ kind: "error", message: toPrefixedErrorMessage("Failed to open file picker", err) });
+    }
+  }
+
   function buildProfile(): ConnectionProfile {
     const auth: SshAuth =
       sshAuthKind === "password"
@@ -198,7 +236,10 @@ export function ConnectionDialog({
     (sshHost.trim().length > 0 &&
       sshUsername.trim().length > 0 &&
       (sshAuthKind === "password" ? sshPassword.length > 0 : sshKeyPath.trim().length > 0));
-  const canSave = draft.name.trim().length > 0 && draft.host.trim().length > 0 && sshTunnelValid;
+  const requiredFieldFilled = isFileBasedEngine(engine)
+    ? draft.database.trim().length > 0
+    : draft.host.trim().length > 0;
+  const canSave = draft.name.trim().length > 0 && requiredFieldFilled && sshTunnelValid;
   const busy = status.kind === "testing" || status.kind === "connecting";
   const engineLabel = ENGINE_OPTIONS.find((o) => o.value === engine)?.label ?? "database";
 
@@ -214,26 +255,19 @@ export function ConnectionDialog({
               <DialogDescription>Choose the type of database you want to connect to.</DialogDescription>
             </DialogHeader>
 
-            <Field>
-              <FieldLabel htmlFor="conn-engine-picker">Database Type</FieldLabel>
-              <FieldContent>
-                <Select value={engine} onValueChange={(value) => handleSelectEngine(value as Engine)}>
-                  <SelectTrigger id="conn-engine-picker">
-                    <SelectValue placeholder="Select a database type" />
-                  </SelectTrigger>
-                  <SelectContent className={"w-full"}>
-                    {ENGINE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <div className="flex items-center gap-2">
-                          <EngineIcon engine={option.value} className="size-4" />
-                          {option.label}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldContent>
-            </Field>
+            <div className="grid grid-cols-3 gap-3">
+              {ENGINE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => handleSelectEngine(option.value)}
+                  className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 text-center transition-colors hover:border-primary/50 hover:bg-accent"
+                >
+                  <EngineIcon engine={option.value} className="size-8" />
+                  <span className="text-sm font-medium">{option.label}</span>
+                </button>
+              ))}
+            </div>
           </>
         ) : (
           <>
@@ -250,138 +284,186 @@ export function ConnectionDialog({
                 <DialogTitle>New {engineLabel} Connection</DialogTitle>
               </div>
               <DialogDescription>
-                {engine === "neon"
-                  ? "Paste your Neon connection string to auto-fill the fields, or enter them manually."
-                  : `Connect to a ${engineLabel} database. Paste a connection URL to auto-fill the fields, or enter them manually.`}
+                {isFileBasedEngine(engine)
+                  ? `Choose a ${engineLabel} database file on this machine.`
+                  : engine === "neon"
+                    ? "Paste your Neon connection string to auto-fill the fields, or enter them manually."
+                    : `Connect to a ${engineLabel} database. Paste a connection URL to auto-fill the fields, or enter them manually.`}
               </DialogDescription>
             </DialogHeader>
 
             <div className={useSshTunnel ? "grid grid-cols-2 gap-6" : "grid grid-cols-1"}>
               <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="conn-url">
-                    <Link2 className="size-3.5" />
-                    Connection URL
-                  </FieldLabel>
-                  <FieldContent>
-                    <Input
-                      id="conn-url"
-                      placeholder={`${urlSchemeFor(engine)}://user:password@host:${draft.port}/database`}
-                      value={url}
-                      onChange={(e) => handleUrlChange(e.target.value)}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <FieldDescription>
-                      Optional — fills in the fields below automatically.
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
+                {isFileBasedEngine(engine) ? (
+                  <>
+                    <Field>
+                      <FieldLabel htmlFor="conn-file-path">Database File</FieldLabel>
+                      <FieldContent>
+                        <div className="flex gap-2">
+                          <Input
+                            id="conn-file-path"
+                            placeholder="/path/to/database.db"
+                            value={draft.database}
+                            onChange={(e) => update("database", e.target.value)}
+                            autoComplete="off"
+                            spellCheck={false}
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={handleChooseDatabaseFile}
+                          >
+                            <FolderOpen className="size-3.5" />
+                            Choose
+                          </Button>
+                        </div>
+                      </FieldContent>
+                    </Field>
 
-                <FieldSeparator>or enter manually</FieldSeparator>
+                    <Field>
+                      <FieldLabel htmlFor="conn-name">Name</FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-name"
+                          placeholder="My Database"
+                          value={draft.name}
+                          onChange={(e) => update("name", e.target.value)}
+                          autoComplete="off"
+                        />
+                      </FieldContent>
+                    </Field>
+                  </>
+                ) : (
+                  <>
+                    <Field>
+                      <FieldLabel htmlFor="conn-url">
+                        <Link2 className="size-3.5" />
+                        Connection URL
+                      </FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-url"
+                          placeholder={`${urlSchemeFor(engine)}://user:password@host:${draft.port}/database`}
+                          value={url}
+                          onChange={(e) => handleUrlChange(e.target.value)}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                        <FieldDescription>
+                          Optional — fills in the fields below automatically.
+                        </FieldDescription>
+                      </FieldContent>
+                    </Field>
 
-                <Field>
-                  <FieldLabel htmlFor="conn-name">Name</FieldLabel>
-                  <FieldContent>
-                    <Input
-                      id="conn-name"
-                      placeholder="My Database"
-                      value={draft.name}
-                      onChange={(e) => update("name", e.target.value)}
-                      autoComplete="off"
-                    />
-                  </FieldContent>
-                </Field>
+                    <FieldSeparator>or enter manually</FieldSeparator>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <Field className="col-span-2">
-                    <FieldLabel htmlFor="conn-host">Host</FieldLabel>
-                    <FieldContent>
-                      <Input
-                        id="conn-host"
-                        placeholder="localhost"
-                        value={draft.host}
-                        onChange={(e) => update("host", e.target.value)}
-                        autoComplete="off"
-                        spellCheck={false}
-                      />
-                    </FieldContent>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="conn-port">Port</FieldLabel>
-                    <FieldContent>
-                      <Input
-                        id="conn-port"
-                        type="number"
-                        value={draft.port}
-                        onChange={(e) => update("port", Number(e.target.value) || 0)}
-                      />
-                    </FieldContent>
-                  </Field>
-                </div>
+                    <Field>
+                      <FieldLabel htmlFor="conn-name">Name</FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-name"
+                          placeholder="My Database"
+                          value={draft.name}
+                          onChange={(e) => update("name", e.target.value)}
+                          autoComplete="off"
+                        />
+                      </FieldContent>
+                    </Field>
 
-                <Field>
-                  <FieldLabel htmlFor="conn-database">Database</FieldLabel>
-                  <FieldContent>
-                    <Input
-                      id="conn-database"
-                      placeholder={engine === "my-sql" || engine === "maria-db" ? "mysql" : "postgres"}
-                      value={draft.database}
-                      onChange={(e) => update("database", e.target.value)}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                  </FieldContent>
-                </Field>
+                    <div className="grid grid-cols-3 gap-3">
+                      <Field className="col-span-2">
+                        <FieldLabel htmlFor="conn-host">Host</FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="conn-host"
+                            placeholder="localhost"
+                            value={draft.host}
+                            onChange={(e) => update("host", e.target.value)}
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                        </FieldContent>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="conn-port">Port</FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="conn-port"
+                            type="number"
+                            value={draft.port}
+                            onChange={(e) => update("port", Number(e.target.value) || 0)}
+                          />
+                        </FieldContent>
+                      </Field>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <Field>
-                    <FieldLabel htmlFor="conn-user">User</FieldLabel>
-                    <FieldContent>
-                      <Input
-                        id="conn-user"
-                        placeholder={engine === "my-sql" || engine === "maria-db" ? "root" : "postgres"}
-                        value={draft.user}
-                        onChange={(e) => update("user", e.target.value)}
-                        autoComplete="off"
-                        spellCheck={false}
-                      />
-                    </FieldContent>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="conn-password">Password</FieldLabel>
-                    <FieldContent>
-                      <Input
-                        id="conn-password"
-                        type="password"
-                        value={draft.password}
-                        onChange={(e) => update("password", e.target.value)}
-                        autoComplete="off"
-                      />
-                    </FieldContent>
-                  </Field>
-                </div>
+                    <Field>
+                      <FieldLabel htmlFor="conn-database">Database</FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-database"
+                          placeholder={FIELD_PLACEHOLDERS[engine].database}
+                          value={draft.database}
+                          onChange={(e) => update("database", e.target.value)}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </FieldContent>
+                    </Field>
 
-                <Field>
-                  <FieldLabel htmlFor="conn-ssl">SSL Mode</FieldLabel>
-                  <FieldContent>
-                    <Select
-                      value={draft.sslMode}
-                      onValueChange={(value) => update("sslMode", value as SslMode)}
-                    >
-                      <SelectTrigger id="conn-ssl">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SSL_MODES.map((mode) => (
-                          <SelectItem key={mode.value} value={mode.value}>
-                            {mode.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </FieldContent>
-                </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field>
+                        <FieldLabel htmlFor="conn-user">User</FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="conn-user"
+                            placeholder={FIELD_PLACEHOLDERS[engine].user}
+                            value={draft.user}
+                            onChange={(e) => update("user", e.target.value)}
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                        </FieldContent>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="conn-password">Password</FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="conn-password"
+                            type="password"
+                            value={draft.password}
+                            onChange={(e) => update("password", e.target.value)}
+                            autoComplete="off"
+                          />
+                        </FieldContent>
+                      </Field>
+                    </div>
+
+                    <Field>
+                      <FieldLabel htmlFor="conn-ssl">SSL Mode</FieldLabel>
+                      <FieldContent>
+                        <Select
+                          value={draft.sslMode}
+                          onValueChange={(value) => update("sslMode", value as SslMode)}
+                        >
+                          <SelectTrigger id="conn-ssl">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SSL_MODES.map((mode) => (
+                              <SelectItem key={mode.value} value={mode.value}>
+                                {mode.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FieldContent>
+                    </Field>
+                  </>
+                )}
                 <Field orientation="horizontal">
                   <Checkbox
                     id="conn-save"
@@ -407,24 +489,26 @@ export function ConnectionDialog({
                     </FieldDescription>
                   </FieldContent>
                 </Field>
-                <Field orientation="horizontal">
-                  <Checkbox
-                    id="conn-ssh-tunnel"
-                    checked={useSshTunnel}
-                    onCheckedChange={(checked) => setUseSshTunnel(checked === true)}
-                  />
-                  <FieldContent>
-                    <FieldLabel htmlFor="conn-ssh-tunnel" className="font-normal">
-                      Use SSH Tunnel
-                    </FieldLabel>
-                    <FieldDescription>
-                      Route this connection through a bastion host — needed when the database isn't directly reachable.
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
+                {!isFileBasedEngine(engine) && (
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="conn-ssh-tunnel"
+                      checked={useSshTunnel}
+                      onCheckedChange={(checked) => setUseSshTunnel(checked === true)}
+                    />
+                    <FieldContent>
+                      <FieldLabel htmlFor="conn-ssh-tunnel" className="font-normal">
+                        Use SSH Tunnel
+                      </FieldLabel>
+                      <FieldDescription>
+                        Route this connection through a bastion host — needed when the database isn't directly reachable.
+                      </FieldDescription>
+                    </FieldContent>
+                  </Field>
+                )}
               </FieldGroup>
 
-              {useSshTunnel && (
+              {useSshTunnel && !isFileBasedEngine(engine) && (
                 <FieldGroup className="border-l pl-6">
                   <div className="grid grid-cols-3 gap-3">
                     <Field className="col-span-2">

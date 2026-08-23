@@ -1,6 +1,18 @@
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
-export type Engine = "postgres" | "neon" | "cockroach-db" | "my-sql" | "maria-db";
+export type Engine =
+  | "postgres"
+  | "neon"
+  | "cockroach-db"
+  | "greengage-db"
+  | "my-sql"
+  | "maria-db"
+  | "ti-db"
+  | "sqlite"
+  | "sql-server"
+  | "star-rocks"
+  | "click-house"
+  | "duck-db";
 
 export type SshAuth =
   | { kind: "password"; password: string }
@@ -63,25 +75,46 @@ export function engineOf(profile: { engine?: Engine }): Engine {
   return profile.engine ?? "postgres";
 }
 
+// SQLite and DuckDB are embedded, not client-server — there is no
+// host/port/user/password to connect with, only a file path.
+// `ConnectionProfile.database` holds that path instead of a database
+// name for these engines (see `Engine::Sqlite`/`Engine::DuckDb`'s doc
+// comments on the Rust side); host/port/user/password are simply left
+// empty rather than adding a separate profile shape per engine.
+export function isFileBasedEngine(engine: Engine): boolean {
+  return engine === "sqlite" || engine === "duck-db";
+}
+
 export const DEFAULT_PG_PORT = 5432;
 export const DEFAULT_MYSQL_PORT = 3306;
 export const DEFAULT_COCKROACHDB_PORT = 26257;
+export const DEFAULT_TIDB_PORT = 4000;
+export const DEFAULT_MSSQL_PORT = 1433;
+export const DEFAULT_STARROCKS_PORT = 9030;
+export const DEFAULT_CLICKHOUSE_PORT = 8123;
 
 export function defaultPortFor(engine: Engine): number {
   if (engine === "my-sql" || engine === "maria-db") return DEFAULT_MYSQL_PORT;
   if (engine === "cockroach-db") return DEFAULT_COCKROACHDB_PORT;
+  if (engine === "ti-db") return DEFAULT_TIDB_PORT;
+  if (engine === "sql-server") return DEFAULT_MSSQL_PORT;
+  if (engine === "star-rocks") return DEFAULT_STARROCKS_PORT;
+  if (engine === "click-house") return DEFAULT_CLICKHOUSE_PORT;
   return DEFAULT_PG_PORT;
 }
 
 export function urlSchemeFor(engine: Engine): string {
-  return engine === "my-sql" || engine === "maria-db" ? "mysql" : "postgres";
+  if (engine === "my-sql" || engine === "maria-db" || engine === "ti-db" || engine === "star-rocks") return "mysql";
+  if (engine === "sql-server") return "sqlserver";
+  if (engine === "click-house") return "http";
+  return "postgres";
 }
 
 export function createEmptyConnectionDraft(engine: Engine): Omit<ConnectionProfile, "id"> {
   return {
     name: "",
     engine,
-    host: "localhost",
+    host: isFileBasedEngine(engine) ? "" : "localhost",
     port: defaultPortFor(engine),
     database: "",
     user: "",
@@ -108,7 +141,13 @@ export function parseConnectionUrl(
   }
 
   const validSchemes =
-    engine === "my-sql" || engine === "maria-db" ? ["mysql:"] : ["postgres:", "postgresql:"];
+    engine === "my-sql" || engine === "maria-db" || engine === "ti-db" || engine === "star-rocks"
+      ? ["mysql:"]
+      : engine === "sql-server"
+        ? ["sqlserver:", "mssql:"]
+        : engine === "click-house"
+          ? ["http:", "https:"]
+          : ["postgres:", "postgresql:"];
   if (!validSchemes.includes(url.protocol)) {
     return null;
   }
@@ -146,8 +185,12 @@ export function toDisplayUrl(profile: {
   user: string;
   sslMode: SslMode;
 }): string {
+  const engine = engineOf(profile);
+  if (isFileBasedEngine(engine)) {
+    return profile.database || "(no file selected)";
+  }
   const auth = profile.user ? `${profile.user}@` : "";
   const db = profile.database ? `/${profile.database}` : "";
   const ssl = profile.sslMode && profile.sslMode !== "disable" ? `?sslmode=${profile.sslMode}` : "";
-  return `${urlSchemeFor(engineOf(profile))}://${auth}${profile.host}:${profile.port}${db}${ssl}`;
+  return `${urlSchemeFor(engine)}://${auth}${profile.host}:${profile.port}${db}${ssl}`;
 }

@@ -7,12 +7,6 @@ use tokio::net::TcpListener;
 use crate::domain::connection::{SshAuth, SshTunnelConfig};
 use crate::error::AppError;
 
-/// A live SSH port forward: `local_addr` accepts plain TCP connections
-/// and relays each one, over the SSH session, to the real database's
-/// `host:port` on the far side of the bastion. Held for the lifetime of
-/// the pooled connection it backs — dropping it (via `shutdown` or
-/// simply letting it go out of scope) ends the forwarding task and
-/// closes the SSH session.
 pub struct SshTunnel {
     pub local_addr: std::net::SocketAddr,
     shutdown: tokio::sync::oneshot::Sender<()>,
@@ -24,11 +18,6 @@ impl SshTunnel {
     }
 }
 
-/// Accepts any server host key without verification — same trust
-/// posture this app already takes for TLS certs in non-`VerifyCa`/
-/// `VerifyFull` modes (see `postgres::pool::NoCertVerification`).
-/// Verifying against a known-hosts file is a reasonable future
-/// improvement, not required for the tunnel to be useful.
 struct AcceptAllHostKeys;
 
 impl client::Handler for AcceptAllHostKeys {
@@ -42,12 +31,6 @@ impl client::Handler for AcceptAllHostKeys {
     }
 }
 
-/// Opens an SSH session to `config`'s bastion host and starts forwarding
-/// a freshly bound local port to `target_host:target_port` (the real
-/// database address) for as long as the returned `SshTunnel` lives.
-/// Every accepted local connection opens its own `direct-tcpip` channel
-/// on the same SSH session, so the tunnel does not limit the pool to a
-/// single concurrent database connection.
 pub async fn open_tunnel(
     config: &SshTunnelConfig,
     target_host: &str,

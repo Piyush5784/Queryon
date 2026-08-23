@@ -9,6 +9,8 @@ export {
   deleteSavedConnection,
   renameSavedConnection,
   pickSshKeyFile,
+  pickSqliteFile,
+  pickDuckdbFile,
   type ConnectionInfo,
   type SavedConnectionProfile,
 } from "@/src/lib/tauri/commands";

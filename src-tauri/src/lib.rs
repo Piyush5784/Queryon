@@ -22,6 +22,8 @@ pub fn run() {
         commands::connection::db_delete_saved_connection,
         commands::connection::db_rename_saved_connection,
         commands::connection::ssh_pick_key_file,
+        commands::connection::db_pick_sqlite_file,
+        commands::connection::db_pick_duckdb_file,
         commands::schema::db_list_tables,
         commands::schema::db_get_table_columns,
         commands::schema::db_list_indexes,

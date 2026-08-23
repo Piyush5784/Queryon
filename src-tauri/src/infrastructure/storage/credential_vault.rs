@@ -33,10 +33,6 @@ pub fn delete_password(connection_id: &str) -> Result<(), AppError> {
     }
 }
 
-/// The SSH password or private-key passphrase, kept under a separate
-/// keychain entry from the database password (`entry(connection_id)`
-/// above) — a connection can have both a DB password and an SSH secret
-/// at once, so they can't share one slot.
 fn ssh_secret_key(connection_id: &str) -> String {
     format!("{connection_id}-ssh")
 }

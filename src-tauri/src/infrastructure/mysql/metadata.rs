@@ -17,15 +17,6 @@ fn parse_foreign_key_action(rule: &str) -> Option<ForeignKeyAction> {
     }
 }
 
-/// MySQL has no schema layer distinct from the database itself —
-/// `information_schema.tables.table_schema` is the database name the
-/// connection is already scoped to. `TableRef.schema` is populated with
-/// that same name so the UI's schema grouping still makes sense.
-///
-/// Every selected column carries an explicit lowercase alias: MySQL
-/// renders result column labels using `information_schema`'s stored
-/// (uppercase) casing regardless of how the column was referenced in the
-/// query, unlike Postgres which lowercases unquoted identifiers.
 pub async fn list_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableRef>, AppError> {
     let rows = sqlx::query(
         r#"
@@ -65,15 +56,6 @@ pub async fn list_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableRe
         .collect())
 }
 
-/// MariaDB's `information_schema.columns.column_default` returns a
-/// quoted-string default still wrapped in literal single quotes with
-/// internal quotes doubled (e.g. `'it''s a test'`), where real MySQL
-/// returns the bare unescaped string (`it's a test`) for the identical
-/// `DEFAULT` clause — confirmed by testing both engines directly against
-/// the same `create table ... default 'it''s a test'`. Matches Beekeeper
-/// Studio's `MariaDBClient.resolveDefault`
-/// (`temp/apps/studio/src/lib/db/clients/mariadb.ts`). Only ever called
-/// when `is_mariadb` is true — MySQL's own output must never be touched.
 fn unquote_mariadb_default(value: Option<String>) -> Option<String> {
     let value = value?;
     if value.eq_ignore_ascii_case("null") {
@@ -91,16 +73,12 @@ pub async fn get_table_columns(
     database: &str,
     table: &str,
     is_mariadb: bool,
+    is_starrocks: bool,
 ) -> Result<Vec<ColumnInfo>, AppError> {
-    let rows = sqlx::query(
-        r#"
-        select
-            col.column_name as column_name,
-            col.data_type as data_type,
-            (col.is_nullable = 'YES') as is_nullable,
-            col.column_default as column_default,
-            col.ordinal_position as ordinal_position,
-            (
+    let is_primary_key_expr = if is_starrocks {
+        "(col.column_key = 'PRI')"
+    } else {
+        r#"(
                 select count(*) > 0
                 from information_schema.key_column_usage kcu
                 join information_schema.table_constraints tc
@@ -111,41 +89,61 @@ pub async fn get_table_columns(
                     and kcu.table_schema = col.table_schema
                     and kcu.table_name = col.table_name
                     and kcu.column_name = col.column_name
-            ) as is_primary_key
+            )"#
+    };
+
+    let sql = format!(
+        r#"
+        select
+            col.column_name as column_name,
+            col.data_type as data_type,
+            (col.is_nullable = 'YES') as is_nullable,
+            col.column_default as column_default,
+            cast(col.ordinal_position as char) as ordinal_position,
+            {is_primary_key_expr} as is_primary_key
         from information_schema.columns col
         where col.table_schema = ? and col.table_name = ?
         order by col.ordinal_position
-        "#,
-    )
-    .bind(database)
-    .bind(table)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| AppError::new(format!("Failed to load columns: {e}")))?;
+        "#
+    );
 
-    Ok(rows
-        .into_iter()
+    let rows = sqlx::query(AssertSqlSafe(sql))
+        .bind(database)
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to load columns: {e}")))?;
+
+    rows.into_iter()
         .map(|row| {
             let is_primary_key: i64 = row.get("is_primary_key");
-            let ordinal_position: u32 = row.get("ordinal_position");
+            let ordinal_position: String = row.get("ordinal_position");
+            let ordinal_position: i32 = ordinal_position
+                .parse()
+                .map_err(|_| AppError::new(format!("Invalid ordinal_position: {ordinal_position}")))?;
             let default: Option<String> = row.get("column_default");
-            ColumnInfo {
+            Ok(ColumnInfo {
                 name: row.get("column_name"),
                 data_type: row.get("data_type"),
                 is_nullable: row.get("is_nullable"),
                 default: if is_mariadb { unquote_mariadb_default(default) } else { default },
                 is_primary_key: is_primary_key != 0,
-                ordinal_position: ordinal_position as i32,
-            }
+                ordinal_position,
+            })
         })
-        .collect())
+        .collect()
 }
 
 pub async fn list_indexes(
     pool: &MySqlPool,
     database: &str,
     table: &str,
+    is_starrocks: bool,
 ) -> Result<Vec<IndexInfo>, AppError> {
+    if is_starrocks {
+        return list_indexes_starrocks(pool, table).await;
+    }
+
     let rows = sqlx::query(
         r#"
         select
@@ -179,10 +177,31 @@ pub async fn list_indexes(
         .collect())
 }
 
+async fn list_indexes_starrocks(pool: &MySqlPool, table: &str) -> Result<Vec<IndexInfo>, AppError> {
+    let sql = format!("show index from `{}`", table.replace('`', "``"));
+    let rows = sqlx::raw_sql(AssertSqlSafe(sql))
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to list indexes: {e}")))?;
+
+    let mut indexes: Vec<IndexInfo> = Vec::new();
+    for row in rows {
+        let name: String = row.get("Key_name");
+        let column: String = row.get("Column_name");
+        if let Some(existing) = indexes.iter_mut().find(|i| i.name == name) {
+            existing.columns.push(column);
+        } else {
+            indexes.push(IndexInfo { name, columns: vec![column], is_unique: false, is_primary: false });
+        }
+    }
+    Ok(indexes)
+}
+
 pub async fn list_constraints(
     pool: &MySqlPool,
     database: &str,
     table: &str,
+    is_starrocks: bool,
 ) -> Result<Vec<ConstraintInfo>, AppError> {
     let rows = sqlx::query(
         r#"
@@ -247,6 +266,10 @@ pub async fn list_constraints(
             }
         })
         .collect();
+
+    if is_starrocks {
+        return Ok(constraints);
+    }
 
     let check_rows = sqlx::query(
         r#"

@@ -38,8 +38,13 @@ specta-typescript = "0.0.12"
 tauri-plugin-store = "2"
 keyring = "4"
 async-trait = "0.1"
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "mysql", "chrono", "json", "rust_decimal"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "mysql", "sqlite", "chrono", "json", "rust_decimal"] }
 rust_decimal = "1"
 tauri-plugin-dialog = "2"
 russh = "0.63.0"
+tiberius = { version = "0.12.3", default-features = false, features = ["tds73", "rustls", "chrono"] }
+deadpool = { version = "0.13.0", features = ["rt_tokio_1"] }
+tokio-util = { version = "0.7.19", features = ["compat"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+duckdb = "~1.10505.0"
 

@@ -5,8 +5,12 @@ use tauri::{AppHandle, Wry};
 
 use crate::domain::driver::DatabaseDriver;
 use crate::error::AppError;
+use crate::infrastructure::clickhouse::driver::ClickHouseDriver;
+use crate::infrastructure::duckdb::driver::DuckDbDriver;
+use crate::infrastructure::mssql::driver::MssqlDriver;
 use crate::infrastructure::mysql::driver::MySqlDriver;
 use crate::infrastructure::postgres::driver::PostgresDriver;
+use crate::infrastructure::sqlite::driver::SqliteDriver;
 use crate::infrastructure::ssh::{self, SshTunnel};
 use crate::infrastructure::storage::{credential_vault, profile_store};
 
@@ -29,17 +33,37 @@ pub async fn open_pool_and_verify(
     };
 
     let driver: Arc<dyn DatabaseDriver> = match dial_profile.engine {
-        Engine::Postgres | Engine::Neon | Engine::CockroachDb => {
+        Engine::Postgres | Engine::Neon | Engine::CockroachDb | Engine::GreengageDb => {
             let pool = crate::infrastructure::postgres::pool::build_pool(&dial_profile)?;
             Arc::new(PostgresDriver::new(pool))
         }
-        Engine::MySql => {
+        Engine::MySql | Engine::TiDb => {
             let pool = crate::infrastructure::mysql::pool::build_pool(&dial_profile).await?;
             Arc::new(MySqlDriver::new(pool, dial_profile.database.clone()))
         }
         Engine::MariaDb => {
             let pool = crate::infrastructure::mysql::pool::build_pool(&dial_profile).await?;
             Arc::new(MySqlDriver::new_mariadb(pool, dial_profile.database.clone()))
+        }
+        Engine::StarRocks => {
+            let pool = crate::infrastructure::mysql::pool::build_pool(&dial_profile).await?;
+            Arc::new(MySqlDriver::new_starrocks(pool, dial_profile.database.clone()))
+        }
+        Engine::Sqlite => {
+            let pool = crate::infrastructure::sqlite::pool::build_pool(&dial_profile).await?;
+            Arc::new(SqliteDriver::new(pool))
+        }
+        Engine::SqlServer => {
+            let pool = crate::infrastructure::mssql::pool::build_pool(&dial_profile).await?;
+            Arc::new(MssqlDriver::new(pool))
+        }
+        Engine::ClickHouse => {
+            let client = crate::infrastructure::clickhouse::pool::build_client(&dial_profile).await?;
+            Arc::new(ClickHouseDriver::new(client))
+        }
+        Engine::DuckDb => {
+            let handle = crate::infrastructure::duckdb::pool::build_connection(&dial_profile)?;
+            Arc::new(DuckDbDriver::new(handle))
         }
     };
     log::info!("db_connect: build_pool took {:?}", build_start.elapsed());

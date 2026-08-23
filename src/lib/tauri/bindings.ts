@@ -18,6 +18,15 @@ export const commands = {
 	 *  file. Returns `None` if the user cancels.
 	 */
 	sshPickKeyFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("ssh_pick_key_file")),
+	/**
+	 *  Opens the OS's native file picker for choosing a SQLite database
+	 *  file. Returns `None` if the user cancels. SQLite has no fixed file
+	 *  extension convention (`.db`, `.sqlite`, `.sqlite3`, or none at all are
+	 *  all common), so the filter offers the usual suspects but does not
+	 *  restrict the picker to only those.
+	 */
+	dbPickSqliteFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("db_pick_sqlite_file")),
+	dbPickDuckdbFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("db_pick_duckdb_file")),
 	dbListTables: (connectionId: string) => typedError<TableRef[], AppError>(__TAURI_INVOKE("db_list_tables", { connectionId })),
 	dbGetTableColumns: (connectionId: string, schema: string, table: string) => typedError<ColumnInfo[], AppError>(__TAURI_INVOKE("db_get_table_columns", { connectionId, schema, table })),
 	dbListIndexes: (connectionId: string, schema: string, table: string) => typedError<IndexInfo[], AppError>(__TAURI_INVOKE("db_list_indexes", { connectionId, schema, table })),
@@ -236,8 +245,113 @@ export type DdlStatement = { op: "createTable"; table: string; columns: NewColum
  *  returns the bare unescaped string — see
  *  `infrastructure::mysql::metadata::unquote_mariadb_default` and
  *  `tests/mariadb_metadata.rs`.
+ * 
+ *  `GreengageDb` also maps to `PostgresDriver`, matching Beekeeper's
+ *  `GreengageClient extends PostgresClient` (zero method overrides). But
+ *  unlike CockroachDb/TiDb, this one has a real schema-level divergence
+ *  found by testing against a live `woblerr/greengage:6.31.0` container:
+ *  GPDB6's SQL layer is Postgres-9.4-era — no `jsonb` (only `json`) and no
+ *  `GENERATED ALWAYS AS IDENTITY` (Postgres 10+). The shared dev schema in
+ *  `docker/initdb/01_schema.sql` doesn't load unmodified; GreengageDB gets
+ *  its own schema at `docker/initdb-greengage/01_schema.sql` using
+ *  `serial` and `json` instead. The driver code itself needed no changes —
+ *  only the DDL fed to it.
+ *  `Sqlite` is not a wire-protocol reuse like every other variant here —
+ *  it's the first genuinely embedded/file-based engine (see
+ *  `infrastructure::sqlite`, a full new driver stack built on `sqlx`'s
+ *  `sqlite` feature, matching Beekeeper's own `SqliteClient extends
+ *  BasicDatabaseClient` rather than extending an existing client).
+ *  `ConnectionProfile` is not given a separate file-path field for this —
+ *  `database` already means "the identifier for what you're connecting
+ *  to", so for `Sqlite` it holds the database file's path instead of a
+ *  database name, and `host`/`port`/`user`/`password` are simply unused
+ *  (left empty by the frontend's SQLite connection form). This keeps
+ *  every existing command signature and the saved-connection/credential-
+ *  vault plumbing unchanged rather than threading a new optional field
+ *  through them for one engine.
+ *  `SqlServer` is the second genuinely new driver in this list (after
+ *  `Sqlite`) — TDS is not a wire protocol any other engine here speaks,
+ *  so it gets its own `infrastructure::mssql` stack built on `tiberius`
+ *  (pure-Rust TDS client) paired with a hand-rolled `deadpool::managed`
+ *  pool, since tiberius has no built-in pooling of its own. Real
+ *  divergences found by testing against a live `mcr.microsoft.com/mssql/
+ *  server:2022-latest` container, none of which any other engine here
+ *  has: every column `DEFAULT` is its own separately-named constraint
+ *  object, and both `ALTER COLUMN` and `DROP COLUMN` fail outright
+ *  ("dependent on column") unless that default (and, for `DROP COLUMN`,
+ *  any unique/index constraint on the column) is dropped by name first —
+ *  see `infrastructure::mssql::ddl`'s `render_alter_column`/
+ *  `render_drop_column`. `OFFSET/FETCH` pagination also requires an
+ *  explicit `ORDER BY` to be present at all (`ORDER BY (SELECT NULL)` is
+ *  the fallback when the caller gave no sort).
  */
-export type Engine = "postgres" | "neon" | "cockroach-db" | "my-sql" | "maria-db";
+export type Engine = "postgres" | "neon" | "cockroach-db" | "greengage-db" | "my-sql" | "maria-db" | "ti-db" | "sqlite" | "sql-server" | 
+/**
+ *  Maps to `MySqlDriver` — StarRocks speaks the MySQL wire protocol,
+ *  matching Beekeeper's `StarRocksClient extends MysqlClient`
+ *  (`temp/apps/studio/src/lib/db/clients/starrocks.ts`). Real
+ *  divergences found by testing against a live
+ *  `starrocks/allin1-ubuntu` container, all handled behind
+ *  `MySqlDriver::new_starrocks`'s `is_starrocks` flag: PK/index
+ *  metadata needs different queries entirely
+ *  (`information_schema.key_column_usage`/`table_constraints`/
+ *  `statistics` are always empty; `column_key = 'PRI'` and `SHOW
+ *  INDEX` are the real sources), `CREATE TABLE` needs an explicit
+ *  `PRIMARY KEY(...) DISTRIBUTED BY HASH(...)` clause plain MySQL
+ *  doesn't have, there is no foreign key or check constraint support
+ *  at all, `ALTER COLUMN`-equivalent changes go through separate
+ *  `MODIFY COLUMN`/`RENAME COLUMN` statements rather than MySQL's
+ *  combined `CHANGE COLUMN`, and schema changes are asynchronous —
+ *  the next DDL statement on the same table fails if the previous
+ *  one's background job hasn't finished, so `execute_ddl` polls
+ *  `SHOW ALTER TABLE COLUMN` between statements (see
+ *  `infrastructure::mysql::ddl`'s `wait_for_schema_change`).
+ */
+"star-rocks" | 
+/**
+ *  Not a wire-protocol reuse — ClickHouse's Rust ecosystem has no
+ *  client returning dynamically-shaped rows (the official `clickhouse`
+ *  crate needs a compile-time `#[derive(Row)]` struct per query
+ *  shape), so this talks to its HTTP interface directly via
+ *  `reqwest`, appending `FORMAT JSON` to every query — matching what
+ *  Beekeeper's own `@clickhouse/client` does under the hood
+ *  (`temp/apps/studio/src-commercial/backend/lib/db/clients/
+ *  clickhouse.ts`). See `infrastructure::clickhouse`. Real
+ *  divergences confirmed against a live `clickhouse/clickhouse-
+ *  server` container: metadata comes from `system.*` tables, not
+ *  `information_schema`; a column's nullability is encoded in its
+ *  type string as `Nullable(Inner)` rather than a separate flag;
+ *  `CREATE TABLE` needs an explicit `ENGINE = MergeTree()` clause (no
+ *  default engine exists); there is no `AUTO_INCREMENT` concept
+ *  (rendered as a plain `UInt64`); `ALTER TABLE ADD CONSTRAINT` only
+ *  accepts `CHECK` — `PRIMARY KEY`/`UNIQUE`/`FOREIGN KEY` are
+ *  rejected by ClickHouse's own parser, and even where `FOREIGN KEY`
+ *  syntax is accepted inline in `CREATE TABLE` it is silently parsed
+ *  and dropped, never stored or enforced; row updates/deletes are
+ *  `ALTER TABLE ... UPDATE/DELETE` mutations, not `UPDATE`/`DELETE`
+ *  statements; its HTTP interface rejects more than one `;`-separated
+ *  statement per request ("Multi-statements are not allowed"), so
+ *  every DDL/DML call here is always exactly one statement per HTTP
+ *  call; and there is no real cross-statement session transaction to
+ *  offer manual-commit mode, so `begin_transaction` always errors.
+ */
+"click-house" |
+/**
+ *  Embedded, not client-server — like `Sqlite`, `profile.database`
+ *  holds a file path (or `:memory:`) rather than a database name, and
+ *  `host`/`port`/`user`/`password` are unused. `duckdb-rs` is the
+ *  official Rust binding (a `rusqlite`-styled synchronous wrapper
+ *  around DuckDB's C API), so `infrastructure::duckdb` wraps every
+ *  call in `tokio::task::spawn_blocking`. Real divergences: no
+ *  `AUTO_INCREMENT`/`SERIAL`/`GENERATED ALWAYS AS IDENTITY` — the
+ *  idiom is `CREATE SEQUENCE` plus a `DEFAULT nextval(...)` column
+ *  default; `ALTER TABLE ADD/DROP CONSTRAINT` is entirely
+ *  unimplemented — every constraint can only be set at `CREATE TABLE`
+ *  time; `ALTER COLUMN` needs one statement per change and rename is
+ *  always separate; altering a column on a table another table's
+ *  foreign key references is rejected.
+ */
+"duck-db";
 
 export type ExportFormat = "csv" | "json" | "sql";
 

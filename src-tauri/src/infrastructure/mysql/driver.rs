@@ -21,20 +21,10 @@ const MAX_PAGE_SIZE: i64 = 10_000;
 pub struct MySqlDriver {
     pool: MySqlPool,
     database: String,
-    /// True for `Engine::MariaDb` connections — the wire protocol and
-    /// catalog tables are otherwise identical to MySQL, but
-    /// `information_schema.columns.column_default` needs unquoting on
-    /// MariaDB specifically (see `metadata::unquote_mariadb_default`).
+    
     is_mariadb: bool,
-    /// One dedicated connection per tab in manual-commit mode, checked
-    /// out of the pool and held for the life of that tab's transaction
-    /// rather than returned after each call — same reasoning as
-    /// Postgres's `reserved` field, see its doc comment.
+    is_starrocks: bool,
     reserved: Mutex<HashMap<String, PoolConnection<MySql>>>,
-    /// The connection id of whichever connection `tab_id` currently has
-    /// a query running on — same purpose as Postgres's `running_pids`,
-    /// see its doc comment. `cancel_query` runs `KILL QUERY <id>` on a
-    /// separate connection to interrupt it.
     running_ids: Mutex<HashMap<String, u32>>,
 }
 
@@ -44,6 +34,7 @@ impl MySqlDriver {
             pool,
             database,
             is_mariadb: false,
+            is_starrocks: false,
             reserved: Mutex::new(HashMap::new()),
             running_ids: Mutex::new(HashMap::new()),
         }
@@ -54,15 +45,23 @@ impl MySqlDriver {
             pool,
             database,
             is_mariadb: true,
+            is_starrocks: false,
             reserved: Mutex::new(HashMap::new()),
             running_ids: Mutex::new(HashMap::new()),
         }
     }
 
-    /// Runs `sql` on `conn`, first recording `conn`'s MySQL connection id
-    /// under `tab_id` so a concurrent `cancel_query(tab_id)` call can
-    /// find it, then clearing that record once the query settles either
-    /// way.
+    pub fn new_starrocks(pool: MySqlPool, database: String) -> Self {
+        Self {
+            pool,
+            database,
+            is_mariadb: false,
+            is_starrocks: true,
+            reserved: Mutex::new(HashMap::new()),
+            running_ids: Mutex::new(HashMap::new()),
+        }
+    }
+
     async fn execute_query_trackable(
         &self,
         tab_id: &str,
@@ -88,10 +87,6 @@ impl MySqlDriver {
     }
 }
 
-/// Converts one insert-row value to its text representation. Returns
-/// `None` for `Null`, meaning the column is omitted from the insert
-/// entirely so its table default (or nullability) applies, rather than
-/// binding an explicit SQL `NULL` that would override a `DEFAULT`.
 fn json_to_insert_text(value: &JsonValue) -> Option<String> {
     match value {
         JsonValue::Null => None,
@@ -116,10 +111,6 @@ fn validate_identifier(ident: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Validates every *identifier* field on a `DdlStatement` before it
-/// reaches `ddl::render`/`ddl::execute_all`. See the identical function
-/// in `infrastructure/postgres/driver.rs` for why `data_type` and
-/// `check_expression` are deliberately not validated here.
 fn validate_ddl_statement(statement: &DdlStatement) -> Result<(), AppError> {
     match statement {
         DdlStatement::CreateTable { table, columns } => {
@@ -227,13 +218,13 @@ impl DatabaseDriver for MySqlDriver {
         schema: &str,
         table: &str,
     ) -> Result<Vec<ColumnInfo>, AppError> {
-        metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb).await
+        metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb, self.is_starrocks).await
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, AppError> {
         validate_identifier(schema)?;
         validate_identifier(table)?;
-        metadata::list_indexes(&self.pool, schema, table).await
+        metadata::list_indexes(&self.pool, schema, table, self.is_starrocks).await
     }
 
     async fn list_constraints(
@@ -243,7 +234,7 @@ impl DatabaseDriver for MySqlDriver {
     ) -> Result<Vec<ConstraintInfo>, AppError> {
         validate_identifier(schema)?;
         validate_identifier(table)?;
-        metadata::list_constraints(&self.pool, schema, table).await
+        metadata::list_constraints(&self.pool, schema, table, self.is_starrocks).await
     }
 
     async fn render_ddl(
@@ -255,7 +246,7 @@ impl DatabaseDriver for MySqlDriver {
         for statement in statements {
             validate_ddl_statement(statement)?;
         }
-        ddl::render_all(&self.pool, schema, statements).await
+        ddl::render_all(&self.pool, schema, statements, self.is_starrocks).await
     }
 
     async fn execute_ddl(
@@ -267,7 +258,7 @@ impl DatabaseDriver for MySqlDriver {
         for statement in statements {
             validate_ddl_statement(statement)?;
         }
-        ddl::execute_all(&self.pool, schema, statements).await
+        ddl::execute_all(&self.pool, schema, statements, self.is_starrocks).await
     }
 
     async fn get_table_ddl(&self, schema: &str, table: &str) -> Result<String, AppError> {
@@ -327,10 +318,10 @@ impl DatabaseDriver for MySqlDriver {
         validate_identifier(table)?;
         validate_identifier(column)?;
 
-        let columns = metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb).await?;
+        let columns = metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb, self.is_starrocks).await?;
         let pk_values = pk_values_from_row(&columns, row)?;
 
-        executor::update_json_cell(&self.pool, schema, table, &pk_values, column, value).await
+        executor::update_json_cell(&self.pool, schema, table, &pk_values, column, value, self.is_starrocks).await
     }
 
     async fn update_cell_text(
@@ -345,14 +336,14 @@ impl DatabaseDriver for MySqlDriver {
         validate_identifier(table)?;
         validate_identifier(column)?;
 
-        let columns = metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb).await?;
+        let columns = metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb, self.is_starrocks).await?;
         if !columns.iter().any(|c| c.name == column) {
             return Err(AppError::new(format!("Unknown column '{column}'.")));
         }
 
         let pk_values = pk_values_from_row(&columns, row)?;
 
-        executor::update_cell_text(&self.pool, schema, table, &pk_values, column, new_value).await
+        executor::update_cell_text(&self.pool, schema, table, &pk_values, column, new_value, self.is_starrocks).await
     }
 
     async fn delete_rows(
@@ -368,14 +359,14 @@ impl DatabaseDriver for MySqlDriver {
             return Ok(0);
         }
 
-        let columns = metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb).await?;
+        let columns = metadata::get_table_columns(&self.pool, schema, table, self.is_mariadb, self.is_starrocks).await?;
 
         let mut rows_pk_values = Vec::with_capacity(rows.len());
         for row in rows {
             rows_pk_values.push(pk_values_from_row(&columns, row)?);
         }
 
-        executor::delete_rows(&self.pool, schema, table, &rows_pk_values).await
+        executor::delete_rows(&self.pool, schema, table, &rows_pk_values, self.is_starrocks).await
     }
 
     async fn insert_row(
@@ -396,7 +387,7 @@ impl DatabaseDriver for MySqlDriver {
             insert_values.push((column.clone(), text));
         }
 
-        executor::insert_row(&self.pool, schema, table, &insert_values).await
+        executor::insert_row(&self.pool, schema, table, &insert_values, self.is_starrocks).await
     }
 
     async fn execute_query(&self, sql: &str, offset: u64, limit: u64) -> Result<RawQueryResult, AppError> {

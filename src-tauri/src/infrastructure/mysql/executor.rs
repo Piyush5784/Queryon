@@ -116,7 +116,7 @@ pub async fn fetch_rows(
     let order_by_clause = build_order_by_clause(sort);
 
     let sql = format!(
-        "select * from {}{}{} limit ? offset ?",
+        "select * from {}{}{} limit {limit} offset {offset}",
         quote_qualified(schema, table),
         where_clause,
         order_by_clause
@@ -126,7 +126,6 @@ pub async fn fetch_rows(
     for value in &filter_values {
         query = query.bind(value.clone());
     }
-    query = query.bind(limit).bind(offset);
 
     let rows = query
         .fetch_all(pool)
@@ -189,17 +188,6 @@ pub async fn count_rows(
     let count: i64 = row.try_get(0).map_err(|e| AppError::new(format!("Failed to read row count: {e}")))?;
     Ok(count as u64)
 }
-
-/// Runs `sql` on `conn`, fetching only `limit` rows starting at
-/// `offset`. A SELECT-shaped `sql` is wrapped as a single subquery that
-/// pages with `LIMIT`/`OFFSET` and counts the total via `COUNT(*) OVER()`
-/// in the same pass — see `execute_query_page`. A write/DDL statement
-/// just executes once, ignoring `offset`/`limit`.
-///
-/// Takes `&mut MySqlConnection` rather than a generic `sqlx::Executor` so
-/// the zero-rows fallback (a second, plain `COUNT(*)`, see
-/// `execute_query_page`) can reuse the same connection — a bare
-/// `Executor` is consumed by value per call.
 pub async fn execute_query(
     conn: &mut sqlx::MySqlConnection,
     sql: &str,
@@ -237,13 +225,6 @@ pub async fn execute_query(
         }
     }
 }
-
-/// Distinguishes "the wrapped SQL itself doesn't parse — `sql` can't be
-/// used as a subquery" (worth retrying unwrapped) from any other failure
-/// while running it, cancellation included (must propagate, not be
-/// swallowed by a silent retry that re-runs the query a second time).
-/// MySQL error 1064 is `ER_PARSE_ERROR`; 1149 is a syntax-adjacent
-/// `ER_SYNTAX_ERROR` some server versions report instead.
 enum WrapOrRuntimeError {
     Wrap,
     Runtime(sqlx::Error),
@@ -262,10 +243,6 @@ fn classify_wrap_error(e: sqlx::Error) -> WrapOrRuntimeError {
     }
 }
 
-/// Wraps `sql` as a single query that both counts the total (via
-/// `count(*) over()`, computed once per row already being scanned — no
-/// second full execution) and pages the rows via `LIMIT`/`OFFSET`, so
-/// `sql` runs against the database exactly once per page fetched.
 async fn execute_query_page(
     conn: &mut sqlx::MySqlConnection,
     sql: &str,
@@ -326,8 +303,21 @@ pub async fn update_json_cell(
     pk_values: &[(String, JsonValue)],
     column: &str,
     value: &JsonValue,
+    is_starrocks: bool,
 ) -> Result<(), AppError> {
     let value_text = value.to_string();
+
+    if is_starrocks {
+        let where_clause = starrocks_pk_where_clause(pk_values);
+        let sql = format!(
+            "update {} set {} = {} where {}",
+            quote_qualified(schema, table),
+            quote_ident(column),
+            quote_literal(&value_text),
+            where_clause
+        );
+        return execute_single_row_update_starrocks(pool, &sql, "update cell").await;
+    }
 
     let mut args = MySqlArguments::default();
     let _ = args.add(&value_text);
@@ -350,7 +340,21 @@ pub async fn update_cell_text(
     pk_values: &[(String, JsonValue)],
     column: &str,
     new_value: Option<&str>,
+    is_starrocks: bool,
 ) -> Result<(), AppError> {
+    if is_starrocks {
+        let where_clause = starrocks_pk_where_clause(pk_values);
+        let value_sql = new_value.map(quote_literal).unwrap_or_else(|| "NULL".to_string());
+        let sql = format!(
+            "update {} set {} = {} where {}",
+            quote_qualified(schema, table),
+            quote_ident(column),
+            value_sql,
+            where_clause
+        );
+        return execute_single_row_update_starrocks(pool, &sql, "update cell").await;
+    }
+
     let mut args = MySqlArguments::default();
     let _ = args.add(new_value.map(|s| s.to_string()));
     let where_clause = append_pk_params(&mut args, pk_values);
@@ -372,9 +376,26 @@ pub async fn insert_row(
     schema: &str,
     table: &str,
     values: &[(String, String)],
+    is_starrocks: bool,
 ) -> Result<(), AppError> {
     if values.is_empty() {
         return Err(AppError::new("Cannot insert a row with no columns."));
+    }
+
+    if is_starrocks {
+        let column_names: Vec<String> = values.iter().map(|(c, _)| quote_ident(c)).collect();
+        let literals: Vec<String> = values.iter().map(|(_, v)| quote_literal(v)).collect();
+        let sql = format!(
+            "insert into {} ({}) values ({});",
+            quote_qualified(schema, table),
+            column_names.join(", "),
+            literals.join(", ")
+        );
+        sqlx::raw_sql(AssertSqlSafe(sql))
+            .execute(pool)
+            .await
+            .map_err(|e| AppError::new(format!("Failed to insert row: {}", clean_mysql_error(&e))))?;
+        return Ok(());
     }
 
     let mut args = MySqlArguments::default();
@@ -407,9 +428,28 @@ pub async fn delete_rows(
     schema: &str,
     table: &str,
     rows_pk_values: &[Vec<(String, JsonValue)>],
+    is_starrocks: bool,
 ) -> Result<u64, AppError> {
     if rows_pk_values.is_empty() {
         return Ok(0);
+    }
+
+    if is_starrocks {
+        let row_clauses: Vec<String> = rows_pk_values.iter().map(|pk| format!("({})", starrocks_pk_where_clause(pk))).collect();
+        let where_clause = row_clauses.join(" or ");
+        let sql = format!("delete from {} where {};", quote_qualified(schema, table), where_clause);
+        let result = sqlx::raw_sql(AssertSqlSafe(sql))
+            .execute(pool)
+            .await
+            .map_err(|e| AppError::new(format!("Failed to delete rows: {}", clean_mysql_error(&e))))?;
+        let affected = result.rows_affected();
+        let expected = rows_pk_values.len() as u64;
+        if affected != expected {
+            return Err(AppError::new(format!(
+                "Expected to delete {expected} row(s) but {affected} matched — the data may have changed. Refresh and try again."
+            )));
+        }
+        return Ok(affected);
     }
 
     let mut args = MySqlArguments::default();
@@ -460,6 +500,17 @@ fn append_pk_params(args: &mut MySqlArguments, pk_values: &[(String, JsonValue)]
     where_clause
 }
 
+fn starrocks_pk_where_clause(pk_values: &[(String, JsonValue)]) -> String {
+    pk_values
+        .iter()
+        .map(|(pk_col, pk_value)| {
+            let literal = json_pk_to_text_param(pk_value).map(|v| quote_literal(&v)).unwrap_or_else(|| "NULL".to_string());
+            format!("cast({} as char) = {}", quote_ident(pk_col), literal)
+        })
+        .collect::<Vec<_>>()
+        .join(" and ")
+}
+
 async fn execute_single_row_update(
     pool: &MySqlPool,
     sql: &str,
@@ -484,6 +535,31 @@ async fn execute_single_row_update(
     }
 
     Ok(())
+}
+
+async fn execute_single_row_update_starrocks(pool: &MySqlPool, sql: &str, action: &str) -> Result<(), AppError> {
+    let result = sqlx::raw_sql(AssertSqlSafe(sql.to_string()))
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::new(format!("Failed to {action}: {}", clean_mysql_error(&e))))?;
+
+    let affected = result.rows_affected();
+    if affected == 0 {
+        return Err(AppError::new(
+            "No matching row found — it may have been deleted or modified.",
+        ));
+    }
+    if affected > 1 {
+        return Err(AppError::new(
+            "Update matched more than one row — refusing to apply to avoid unintended changes.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn quote_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
 fn json_pk_to_text_param(value: &JsonValue) -> Option<String> {

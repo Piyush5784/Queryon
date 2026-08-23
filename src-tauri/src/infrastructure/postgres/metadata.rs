@@ -82,7 +82,7 @@ pub async fn get_table_columns(
                 col.data_type,
                 (col.is_nullable = 'YES') as is_nullable,
                 col.column_default,
-                col.ordinal_position::int,
+                col.ordinal_position::text as ordinal_position_text,
                 exists (
                     select 1
                     from information_schema.table_constraints tc
@@ -104,22 +104,32 @@ pub async fn get_table_columns(
         .await
         .map_err(|e| AppError::new(format!("Failed to load columns: {}", describe_pg_error(&e))))?;
 
-    Ok(rows
-        .into_iter()
-        .map(|row| ColumnInfo {
-            name: row.get("column_name"),
-            data_type: row.get("data_type"),
-            is_nullable: row.get("is_nullable"),
-            default: row.get("column_default"),
-            is_primary_key: row.get("is_primary_key"),
+    rows.into_iter()
+        .map(|row| {
             // Real Postgres reports `ordinal_position::int` as `int4` on
-            // the wire, but CockroachDB's `information_schema` shim
-            // reports it as `int8` even after the same cast — reading
-            // as i64 and narrowing works correctly for both engines
-            // rather than special-casing the query per engine.
-            ordinal_position: row.get::<_, i64>("ordinal_position") as i32,
+            // the wire, CockroachDB's `information_schema` shim reports
+            // it as `int8` even after the same cast, and GreengageDB
+            // (GPDB6) reports plain `int4` again but tokio_postgres's i64
+            // FromSql rejects it outright ("error deserializing column")
+            // — no single fixed-width integer type decodes correctly
+            // across all three. Casting to text and parsing in Rust is
+            // wire-type-agnostic by construction and works for all of
+            // them uniformly, the same fix used for the equivalent MySQL
+            // cross-engine mismatch in infrastructure::mysql::metadata.
+            let ordinal_position: String = row.get("ordinal_position_text");
+            let ordinal_position: i32 = ordinal_position.parse().map_err(|_| {
+                AppError::new(format!("Invalid ordinal_position: {ordinal_position}"))
+            })?;
+            Ok(ColumnInfo {
+                name: row.get("column_name"),
+                data_type: row.get("data_type"),
+                is_nullable: row.get("is_nullable"),
+                default: row.get("column_default"),
+                is_primary_key: row.get("is_primary_key"),
+                ordinal_position,
+            })
         })
-        .collect())
+        .collect()
 }
 
 pub async fn list_indexes(

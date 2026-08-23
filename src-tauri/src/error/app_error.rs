@@ -31,10 +31,6 @@ impl From<&str> for AppError {
     }
 }
 
-/// Turns a query/execution-level tokio-postgres error into a message a
-/// user can act on. Prefers the structured DbError (SQLSTATE + message)
-/// Postgres sends back over the generic `Display` impl, which for many
-/// errors is just a terse "db error" with no detail attached.
 pub fn describe_pg_error(err: &tokio_postgres::Error) -> String {
     let Some(db_error) = err.as_db_error() else {
         return clean_postgres_error(&err.to_string());
@@ -73,12 +69,6 @@ pub fn describe_pg_error(err: &tokio_postgres::Error) -> String {
         _ => db_error.message().to_string(),
     }
 }
-
-/// Turns a query/execution-level sqlx MySQL error into a message a user
-/// can act on, mirroring `describe_pg_error`'s SQLSTATE-based approach —
-/// MySQL exposes both a SQLSTATE-like code and its own numeric error code
-/// (see https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html);
-/// the numeric code is the more reliable of the two to match on.
 pub fn describe_mysql_error(err: &sqlx::Error) -> String {
     let Some(db_error) = err.as_database_error() else {
         return clean_mysql_error(&err.to_string());
@@ -99,6 +89,46 @@ pub fn describe_mysql_error(err: &sqlx::Error) -> String {
         1264 => "This value is out of range for the column's type.".to_string(),
         1366 => "This value isn't valid for the column's type.".to_string(),
         _ => mysql_error.message().to_string(),
+    }
+}
+
+pub fn describe_sqlite_error(err: &sqlx::Error) -> String {
+    let Some(db_error) = err.as_database_error() else {
+        return clean_sqlite_error(&err.to_string());
+    };
+    use sqlx::error::DatabaseError;
+
+    let Some(sqlite_error) = db_error.try_downcast_ref::<sqlx::sqlite::SqliteError>() else {
+        return clean_sqlite_error(&db_error.to_string());
+    };
+
+    let code: i32 = sqlite_error
+        .code()
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+
+    match code {
+        2067 | 1555 => "A row with this value already exists — it must be unique.".to_string(),
+        787 => {
+            "This value doesn't match any row in the referenced table — check the related record exists."
+                .to_string()
+        }
+        1299 => "Column cannot be empty — it does not allow NULL.".to_string(),
+        275 => "This value violates a check constraint.".to_string(),
+        _ => clean_sqlite_error(sqlite_error.message()),
+    }
+}
+
+pub fn clean_sqlite_error(raw: &str) -> String {
+    if raw.contains("unable to open database file") {
+        "Could not open the database file — check the path exists and is readable.".to_string()
+    } else if raw.contains("database is locked") {
+        "Database is locked by another connection — close other programs using this file and try again."
+            .to_string()
+    } else if raw.contains("file is not a database") {
+        "This file is not a valid SQLite database.".to_string()
+    } else {
+        raw.to_string()
     }
 }
 

@@ -129,3 +129,57 @@ pub async fn ssh_pick_key_file(app: AppHandle<Wry>) -> Result<Option<String>, Ap
 
     Ok(Some(path.to_string_lossy().into_owned()))
 }
+
+#[tauri::command]
+#[specta::specta]
+pub async fn db_pick_sqlite_file(app: AppHandle<Wry>) -> Result<Option<String>, AppError> {
+    let builder = FileDialogBuilder::new(app.dialog().clone())
+        .add_filter("SQLite database", &["db", "sqlite", "sqlite3"])
+        .add_filter("All files", &["*"]);
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    builder.pick_file(move |path| {
+        let _ = tx.send(path);
+    });
+
+    let chosen = rx
+        .await
+        .map_err(|_| AppError::new("File picker closed unexpectedly."))?;
+
+    let Some(path) = chosen else {
+        return Ok(None);
+    };
+
+    let path = path
+        .into_path()
+        .map_err(|e| AppError::new(format!("Invalid file: {e}")))?;
+
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn db_pick_duckdb_file(app: AppHandle<Wry>) -> Result<Option<String>, AppError> {
+    let builder = FileDialogBuilder::new(app.dialog().clone())
+        .add_filter("DuckDB database", &["duckdb", "db"])
+        .add_filter("All files", &["*"]);
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    builder.pick_file(move |path| {
+        let _ = tx.send(path);
+    });
+
+    let chosen = rx
+        .await
+        .map_err(|_| AppError::new("File picker closed unexpectedly."))?;
+
+    let Some(path) = chosen else {
+        return Ok(None);
+    };
+
+    let path = path
+        .into_path()
+        .map_err(|e| AppError::new(format!("Invalid file: {e}")))?;
+
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
