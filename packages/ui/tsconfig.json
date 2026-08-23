@@ -1,0 +1,10 @@
+{
+  "extends": "@queryon/typescript-config/react-library.json",
+  "compilerOptions": {
+    "paths": {
+      "@queryon/ui/*": ["./src/*"]
+    }
+  },
+  "include": ["."],
+  "exclude": ["node_modules", "dist"]
+}
