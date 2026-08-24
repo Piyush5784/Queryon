@@ -6,7 +6,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/src/app/components/ui/empty";
+} from "@queryon/ui/components/empty";
 import type { AppTab } from "@/src/app/tabs";
 import type { SavedConnectionProfile } from "@/src/features/connections/types";
 import { QueryTabView } from "@/src/features/query/components/QueryTabView";

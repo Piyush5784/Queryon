@@ -1,13 +1,13 @@
 import { PlugZap, TerminalSquare } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Separator } from "@/src/app/components/ui/separator";
+import { Separator } from "@queryon/ui/components/separator";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/src/app/components/ui/sidebar";
-import { TooltipProvider } from "@/src/app/components/ui/tooltip";
+} from "@queryon/ui/components/sidebar";
+import { TooltipProvider } from "@queryon/ui/components/tooltip";
+import { TooltipButton } from "@/src/components/TooltipButton";
 import type { AppTab } from "@/src/app/tabs";
 import type { SavedConnectionProfile } from "@/src/features/connections/types";
 import type { SavedQuery } from "@/src/features/query/api";
@@ -24,6 +24,7 @@ interface AppLayoutProps {
   queryRefreshToken: number;
   onSelectConnection: (id: string) => void;
   onDeleteConnection: (id: string) => void;
+  onDisconnect: (id: string) => void;
   onOpenTable: (connectionId: string, schema: string, table: string) => void;
   onNewConnection: () => void;
   onNewQuery: (connectionId?: string) => void;
@@ -49,6 +50,7 @@ export function AppLayout({
   queryRefreshToken,
   onSelectConnection,
   onDeleteConnection,
+  onDisconnect,
   onOpenTable,
   onNewConnection,
   onNewQuery,
@@ -73,6 +75,7 @@ export function AppLayout({
           activeConnectionId={activeConnectionId}
           queryRefreshToken={queryRefreshToken}
           onSelectConnection={onSelectConnection}
+          onDisconnect={onDisconnect}
           onOpenTable={onOpenTable}
           onNewConnection={onNewConnection}
           onOpenSavedQuery={onOpenSavedQuery}
@@ -107,10 +110,17 @@ export function AppLayout({
               </div>
             </div>
             {activeConnection && !showHome && (
-              <Button size="xs" variant="outline" className="gap-1.5" onClick={() => onNewQuery()}>
+              <TooltipButton
+                size="xs"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => onNewQuery()}
+                tooltip="New Query"
+                shortcut={["⌘", "T"]}
+              >
                 <TerminalSquare className="size-3.5" />
                 New Query
-              </Button>
+              </TooltipButton>
             )}
           </header>
           <Workspace

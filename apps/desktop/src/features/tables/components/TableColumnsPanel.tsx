@@ -1,5 +1,5 @@
-import { Button } from "@/src/app/components/ui/button";
-import { Checkbox } from "@/src/app/components/ui/checkbox";
+import { Button } from "@queryon/ui/components/button";
+import { Checkbox } from "@queryon/ui/components/checkbox";
 
 interface TableColumnsPanelProps {
   columns: string[];

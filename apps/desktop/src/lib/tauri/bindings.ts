@@ -18,13 +18,6 @@ export const commands = {
 	 *  file. Returns `None` if the user cancels.
 	 */
 	sshPickKeyFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("ssh_pick_key_file")),
-	/**
-	 *  Opens the OS's native file picker for choosing a SQLite database
-	 *  file. Returns `None` if the user cancels. SQLite has no fixed file
-	 *  extension convention (`.db`, `.sqlite`, `.sqlite3`, or none at all are
-	 *  all common), so the filter offers the usual suspects but does not
-	 *  restrict the picker to only those.
-	 */
 	dbPickSqliteFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("db_pick_sqlite_file")),
 	dbPickDuckdbFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("db_pick_duckdb_file")),
 	dbListTables: (connectionId: string) => typedError<TableRef[], AppError>(__TAURI_INVOKE("db_list_tables", { connectionId })),
@@ -89,14 +82,6 @@ export const commands = {
 /* Types */
 export type AppError = string;
 
-/**
- *  An existing column's edited definition, as submitted from the
- *  frontend's inline column editor. `current_name` locates the column;
- *  `column` carries its full target shape (name, type, nullable,
- *  default) — MySQL's `MODIFY COLUMN` must restate the whole definition
- *  regardless of which fields actually changed, so this always carries
- *  all of them rather than a sparse patch.
- */
 export type ColumnEdit = {
 	currentName: string,
 	column: NewColumn,
@@ -126,20 +111,7 @@ export type ConnectionProfile = {
 	user: string,
 	password: string,
 	sslMode: SslMode,
-	/**
-	 *  When true, every write command (schema DDL, row insert/update/
-	 *  delete) is rejected at the IPC layer for this connection — see
-	 *  `state::ConnectionRegistry::require_writable`. A safety net for
-	 *  connecting to a database you want to look at but not touch,
-	 *  independent of what the DB user's actual grants allow.
-	 */
 	readOnly?: boolean,
-	/**
-	 *  When set, `host`/`port` above are only ever used as the *target*
-	 *  the SSH tunnel forwards to — the actual TCP connection this app
-	 *  makes goes to a local forwarded port instead. See
-	 *  `domain::connection::service::open_pool_and_verify`.
-	 */
 	sshTunnel?: SshTunnelConfig | null,
 };
 
@@ -147,231 +119,38 @@ export type ConstraintInfo = {
 	name: string,
 	kind: ConstraintKind,
 	columns: string[],
-	/**
-	 *  Set only for `ForeignKey` — the referenced table and its columns,
-	 *  positionally matched to `columns`.
-	 */
 	referencedTable: string | null,
 	referencedColumns: string[],
-	/**
-	 *  Set only for `ForeignKey`. `None` reads as the engine's own
-	 *  default (`NO ACTION` on both Postgres and MySQL) rather than
-	 *  `Some(NoAction)` — the two engines report an unset action
-	 *  differently, and downstream code should treat "unset" and
-	 *  "explicitly NO ACTION" the same way either way.
-	 */
 	onUpdate: ForeignKeyAction | null,
 	onDelete: ForeignKeyAction | null,
-	/**
-	 *  Set only for `Check` — the constraint's boolean expression, as the
-	 *  engine reports it back (already-normalized text, not necessarily
-	 *  what the user originally typed).
-	 */
 	checkExpression: string | null,
 };
 
 export type ConstraintKind = "primary-key" | "foreign-key" | "unique" | "check";
 
-/**
- *  The result of running a batch of `DdlStatement`s together.
- * 
- *  Postgres runs the whole batch inside one transaction: if any statement
- *  fails, every statement in the batch is rolled back and `rolled_back`
- *  is `true` — nothing in the batch is left applied.
- * 
- *  MySQL cannot offer this guarantee — every DDL statement there
- *  auto-commits immediately, so a failure can never undo earlier
- *  statements in the same batch no matter what the client does. On
- *  MySQL, execution simply stops at the first failure and `rolled_back`
- *  is always `false`; statements before the failure stay applied.
- */
 export type DdlBatchResult = {
 	results: DdlExecutionResult[],
 	rolledBack: boolean,
 };
 
-/**  The result of running one `DdlStatement` within a batch. */
 export type DdlExecutionResult = {
 	sql: string,
 	success: boolean,
 	error: string | null,
 };
 
-/**
- *  One rendered statement plus the raw SQL that will run for it — what
- *  the frontend's DDL-preview step shows before the user confirms
- *  execution (see Phase-3 doc, "generate DDL, show it, let you
- *  review/edit it, then run it").
- */
 export type DdlPreview = {
 	sql: string,
 };
 
-/**
- *  One engine-agnostic schema-write operation. Each `DatabaseDriver`
- *  implementation renders these into its own DDL dialect (see
- *  `infrastructure/{postgres,mysql}/ddl.rs`) — the frontend and the
- *  `domain` layer never construct raw SQL strings for writes.
- * 
- *  `CreateTable` takes a full column list rather than decomposing into
- *  per-column `AddColumn`s — a brand-new table is one `CREATE TABLE`
- *  statement, not N `ALTER TABLE`s. Indexes/constraints on a new table
- *  are staged as ordinary `AddIndex`/`AddConstraint` statements in the
- *  same batch, executed after the `CreateTable` — this composes out of
- *  the existing add machinery rather than duplicating it (see Phase-3
- *  doc, milestone 7: "should mostly compose out of milestones 2-6").
- */
 export type DdlStatement = { op: "createTable"; table: string; columns: NewColumn[] } | { op: "renameTable"; table: string; newName: string } | { op: "dropTable"; table: string } | { op: "addColumn"; table: string; column: NewColumn } | { op: "dropColumn"; table: string; column: string } | { op: "alterColumn"; table: string; edit: ColumnEdit } | { op: "addIndex"; table: string; index: NewIndex } | { op: "dropIndex"; table: string; index: string } | { op: "addConstraint"; table: string; constraint: NewConstraint } | { op: "dropConstraint"; table: string; constraint: string };
 
-/**
- *  Which `DatabaseDriver` a profile connects through. `Neon` is not a
- *  distinct wire protocol — it's Postgres with Neon-friendly defaults
- *  (see `connections/types.ts`'s draft builder) — so it maps to the same
- *  `PostgresDriver` as `Postgres` in `domain/connection/service.rs`.
- *  `CockroachDb` is the same story: it speaks the Postgres wire protocol
- *  and its `pg_catalog` shim is close enough that `PostgresDriver`'s
- *  metadata queries work unmodified (verified against a live CockroachDB
- *  container in `tests/cockroachdb_metadata.rs`) — matching how
- *  Beekeeper Studio's own `CockroachClient extends PostgresClient`
- *  (`temp/apps/studio/src/lib/db/clients/cockroach.ts`) only overrides
- *  the handful of queries that actually diverge.
- * 
- *  `MariaDb` maps to `MySqlDriver` the same way — it speaks the MySQL
- *  wire protocol, matching Beekeeper's `MariaDBClient extends
- *  MysqlClient`. One real divergence found by testing against a live
- *  MariaDB container: `information_schema.columns.column_default`
- *  returns a quoted-string default (e.g. `'it''s a test'`) still wrapped
- *  in literal quotes with doubled internal quotes, where real MySQL
- *  returns the bare unescaped string — see
- *  `infrastructure::mysql::metadata::unquote_mariadb_default` and
- *  `tests/mariadb_metadata.rs`.
- * 
- *  `GreengageDb` also maps to `PostgresDriver`, matching Beekeeper's
- *  `GreengageClient extends PostgresClient` (zero method overrides). But
- *  unlike CockroachDb/TiDb, this one has a real schema-level divergence
- *  found by testing against a live `woblerr/greengage:6.31.0` container:
- *  GPDB6's SQL layer is Postgres-9.4-era — no `jsonb` (only `json`) and no
- *  `GENERATED ALWAYS AS IDENTITY` (Postgres 10+). The shared dev schema in
- *  `docker/initdb/01_schema.sql` doesn't load unmodified; GreengageDB gets
- *  its own schema at `docker/initdb-greengage/01_schema.sql` using
- *  `serial` and `json` instead. The driver code itself needed no changes —
- *  only the DDL fed to it.
- *  `Sqlite` is not a wire-protocol reuse like every other variant here —
- *  it's the first genuinely embedded/file-based engine (see
- *  `infrastructure::sqlite`, a full new driver stack built on `sqlx`'s
- *  `sqlite` feature, matching Beekeeper's own `SqliteClient extends
- *  BasicDatabaseClient` rather than extending an existing client).
- *  `ConnectionProfile` is not given a separate file-path field for this —
- *  `database` already means "the identifier for what you're connecting
- *  to", so for `Sqlite` it holds the database file's path instead of a
- *  database name, and `host`/`port`/`user`/`password` are simply unused
- *  (left empty by the frontend's SQLite connection form). This keeps
- *  every existing command signature and the saved-connection/credential-
- *  vault plumbing unchanged rather than threading a new optional field
- *  through them for one engine.
- *  `SqlServer` is the second genuinely new driver in this list (after
- *  `Sqlite`) — TDS is not a wire protocol any other engine here speaks,
- *  so it gets its own `infrastructure::mssql` stack built on `tiberius`
- *  (pure-Rust TDS client) paired with a hand-rolled `deadpool::managed`
- *  pool, since tiberius has no built-in pooling of its own. Real
- *  divergences found by testing against a live `mcr.microsoft.com/mssql/
- *  server:2022-latest` container, none of which any other engine here
- *  has: every column `DEFAULT` is its own separately-named constraint
- *  object, and both `ALTER COLUMN` and `DROP COLUMN` fail outright
- *  ("dependent on column") unless that default (and, for `DROP COLUMN`,
- *  any unique/index constraint on the column) is dropped by name first —
- *  see `infrastructure::mssql::ddl`'s `render_alter_column`/
- *  `render_drop_column`. `OFFSET/FETCH` pagination also requires an
- *  explicit `ORDER BY` to be present at all (`ORDER BY (SELECT NULL)` is
- *  the fallback when the caller gave no sort).
- */
-export type Engine = "postgres" | "neon" | "cockroach-db" | "greengage-db" | "my-sql" | "maria-db" | "ti-db" | "sqlite" | "sql-server" | 
-/**
- *  Maps to `MySqlDriver` — StarRocks speaks the MySQL wire protocol,
- *  matching Beekeeper's `StarRocksClient extends MysqlClient`
- *  (`temp/apps/studio/src/lib/db/clients/starrocks.ts`). Real
- *  divergences found by testing against a live
- *  `starrocks/allin1-ubuntu` container, all handled behind
- *  `MySqlDriver::new_starrocks`'s `is_starrocks` flag: PK/index
- *  metadata needs different queries entirely
- *  (`information_schema.key_column_usage`/`table_constraints`/
- *  `statistics` are always empty; `column_key = 'PRI'` and `SHOW
- *  INDEX` are the real sources), `CREATE TABLE` needs an explicit
- *  `PRIMARY KEY(...) DISTRIBUTED BY HASH(...)` clause plain MySQL
- *  doesn't have, there is no foreign key or check constraint support
- *  at all, `ALTER COLUMN`-equivalent changes go through separate
- *  `MODIFY COLUMN`/`RENAME COLUMN` statements rather than MySQL's
- *  combined `CHANGE COLUMN`, and schema changes are asynchronous —
- *  the next DDL statement on the same table fails if the previous
- *  one's background job hasn't finished, so `execute_ddl` polls
- *  `SHOW ALTER TABLE COLUMN` between statements (see
- *  `infrastructure::mysql::ddl`'s `wait_for_schema_change`).
- */
-"star-rocks" | 
-/**
- *  Not a wire-protocol reuse — ClickHouse's Rust ecosystem has no
- *  client returning dynamically-shaped rows (the official `clickhouse`
- *  crate needs a compile-time `#[derive(Row)]` struct per query
- *  shape), so this talks to its HTTP interface directly via
- *  `reqwest`, appending `FORMAT JSON` to every query — matching what
- *  Beekeeper's own `@clickhouse/client` does under the hood
- *  (`temp/apps/studio/src-commercial/backend/lib/db/clients/
- *  clickhouse.ts`). See `infrastructure::clickhouse`. Real
- *  divergences confirmed against a live `clickhouse/clickhouse-
- *  server` container: metadata comes from `system.*` tables, not
- *  `information_schema`; a column's nullability is encoded in its
- *  type string as `Nullable(Inner)` rather than a separate flag;
- *  `CREATE TABLE` needs an explicit `ENGINE = MergeTree()` clause (no
- *  default engine exists); there is no `AUTO_INCREMENT` concept
- *  (rendered as a plain `UInt64`); `ALTER TABLE ADD CONSTRAINT` only
- *  accepts `CHECK` — `PRIMARY KEY`/`UNIQUE`/`FOREIGN KEY` are
- *  rejected by ClickHouse's own parser, and even where `FOREIGN KEY`
- *  syntax is accepted inline in `CREATE TABLE` it is silently parsed
- *  and dropped, never stored or enforced; row updates/deletes are
- *  `ALTER TABLE ... UPDATE/DELETE` mutations, not `UPDATE`/`DELETE`
- *  statements; its HTTP interface rejects more than one `;`-separated
- *  statement per request ("Multi-statements are not allowed"), so
- *  every DDL/DML call here is always exactly one statement per HTTP
- *  call; and there is no real cross-statement session transaction to
- *  offer manual-commit mode, so `begin_transaction` always errors.
- */
-"click-house" |
-/**
- *  Embedded, not client-server — like `Sqlite`, `profile.database`
- *  holds a file path (or `:memory:`) rather than a database name, and
- *  `host`/`port`/`user`/`password` are unused. `duckdb-rs` is the
- *  official Rust binding (a `rusqlite`-styled synchronous wrapper
- *  around DuckDB's C API), so `infrastructure::duckdb` wraps every
- *  call in `tokio::task::spawn_blocking`. Real divergences: no
- *  `AUTO_INCREMENT`/`SERIAL`/`GENERATED ALWAYS AS IDENTITY` — the
- *  idiom is `CREATE SEQUENCE` plus a `DEFAULT nextval(...)` column
- *  default; `ALTER TABLE ADD/DROP CONSTRAINT` is entirely
- *  unimplemented — every constraint can only be set at `CREATE TABLE`
- *  time; `ALTER COLUMN` needs one statement per change and rename is
- *  always separate; altering a column on a table another table's
- *  foreign key references is rejected.
- */
-"duck-db";
+export type Engine = "postgres" | "neon" | "cockroach-db" | "greengage-db" | "my-sql" | "maria-db" | "ti-db" | "sqlite" | "sql-server" | "star-rocks" | "click-house" | "duck-db";
 
 export type ExportFormat = "csv" | "json" | "sql";
 
-export type FilterOperator = "equals" | "not-equals" | "greater-than" | "greater-or-equals" | "less-than" | "less-or-equals" | 
-/**  Raw SQL `LIKE` pattern — the caller supplies its own `%`/`_` wildcards. */
-"like" | 
-/**
- *  Raw SQL case-insensitive `ILIKE` pattern (Postgres) / `LIKE` on a
- *  case-insensitive collation (MySQL) — same wildcard convention as `Like`.
- */
-"ilike" | "not-like" | 
-/**  `value` is a comma-separated list; matches if the column equals any of them. */
-"in" | "is-null" | "is-not-null";
+export type FilterOperator = "equals" | "not-equals" | "greater-than" | "greater-or-equals" | "less-than" | "less-or-equals" | "like" | "ilike" | "not-like" | "in" | "is-null" | "is-not-null";
 
-/**
- *  A foreign key's referential action — what happens to a dependent row
- *  when the referenced row is updated or deleted. Both engines support
- *  the same five values with the same names, so this is one shared enum
- *  rather than a per-engine type.
- */
 export type ForeignKeyAction = "no-action" | "restrict" | "cascade" | "set-null" | "set-default";
 
 export type IndexInfo = {
@@ -381,14 +160,6 @@ export type IndexInfo = {
 	isPrimary: boolean,
 };
 
-/**
- *  A new column's definition, as submitted from the frontend's "Add
- *  column" form. `data_type` is a raw engine-dialect type string (e.g.
- *  `text`, `varchar(255)`, `int8`) — not validated against a fixed enum,
- *  since the set of valid types differs per engine and this app doesn't
- *  maintain its own type catalog — with one synthetic exception, see
- *  `AUTO_INCREMENT_TYPE`.
- */
 export type NewColumn = {
 	name: string,
 	dataType: string,
@@ -396,31 +167,17 @@ export type NewColumn = {
 	default: string | null,
 };
 
-/**
- *  A new constraint's definition, as submitted from the frontend's "Add
- *  constraint" form. Which fields apply depends on `kind`, mirroring
- *  `ConstraintInfo`'s own shape (see its doc comments for which fields
- *  are set for which kind).
- */
 export type NewConstraint = {
 	name: string,
 	kind: ConstraintKind,
 	columns: string[],
 	referencedTable: string | null,
 	referencedColumns: string[],
-	/**
-	 *  Set only for `ForeignKey`. `None` renders as the engine default
-	 *  (no explicit ON UPDATE/ON DELETE clause, i.e. NO ACTION).
-	 */
 	onUpdate: ForeignKeyAction | null,
 	onDelete: ForeignKeyAction | null,
 	checkExpression: string | null,
 };
 
-/**
- *  A new index's definition, as submitted from the frontend's "Add
- *  index" form.
- */
 export type NewIndex = {
 	name: string,
 	columns: string[],
@@ -459,31 +216,8 @@ export type QueryHistoryEntry = {
 
 export type QueryHistoryStatus = "success" | "error";
 
-/**
- *  See `TableRowsResult`'s doc comment: each cell is a JSON-encoded
- *  string, not a structured value, working around specta's inability
- *  to export `serde_json::Value` without infinite recursion.
- */
-export type QueryResult = { kind: "rows"; columns: string[]; 
-/**
- *  Just the first page — see `db_fetch_query_result_page` for
- *  the rest, which re-runs the query against the database with
- *  a different `OFFSET` rather than reading from anything
- *  cached in memory.
- */
-rows: string[][]; 
-/**
- *  The query's total matching row count, when known (see
- *  `RawQueryResult::Rows::total_row_count`). `None` means this
- *  result can't be paginated — `rows` is everything there is.
- */
-totalRowCount: number | null; durationMs: number } | { kind: "affected"; rowCount: number; durationMs: number };
+export type QueryResult = { kind: "rows"; columns: string[]; rows: string[][]; totalRowCount: number | null; durationMs: number } | { kind: "affected"; rowCount: number; durationMs: number };
 
-/**
- *  One page of query results, fetched fresh from the database with
- *  `LIMIT`/`OFFSET` on the original query text — see
- *  `db_fetch_query_result_page`.
- */
 export type QueryResultPage = {
 	columns: string[],
 	rows: string[][],
@@ -542,24 +276,12 @@ export type SavedSshTunnelConfig = {
 
 export type SortDirection = "asc" | "desc";
 
-/**
- *  How to authenticate to the SSH bastion host in `SshTunnelConfig`.
- *  Distinct from `ConnectionProfile::password`, which authenticates to
- *  the *database* — this authenticates to the *jump server* the tunnel
- *  is opened through.
- */
 export type SshAuth = { kind: "password"; password: string } | { kind: "privateKey"; keyPath: string; 
 /**  Empty string means the key file is unencrypted. */
 passphrase: string };
 
 export type SshAuthKind = "password" | "private-key";
 
-/**
- *  Routes the database connection through an SSH bastion/jump host via
- *  local port forwarding, for databases with no directly reachable
- *  address (the common case for production/staging databases sitting in
- *  a private network) — see `infrastructure::ssh::tunnel`.
- */
 export type SshTunnelConfig = {
 	host: string,
 	port: number,
@@ -591,10 +313,6 @@ export type TableExportRequest = {
 	deleteOnAbort: boolean,
 };
 
-/**
- *  A single column filter applied as a WHERE clause in `fetch_table_rows`.
- *  `value` is ignored for `IsNull`/`IsNotNull`.
- */
 export type TableFilter = {
 	column: string,
 	operator: FilterOperator,
@@ -608,15 +326,6 @@ export type TableRef = {
 	estimatedRows: number | null,
 };
 
-/**
- *  Each cell is a JSON-encoded string (e.g. `"\"hello\""`, `"42"`,
- *  `"null"`) rather than a structured value. specta cannot export
- *  `serde_json::Value` without recursing infinitely on its own
- *  Array/Object variants (a known limitation, see
- *  infrastructure/postgres/executor.rs's `row_value_to_json`), so
- *  cells are encoded to strings on the Rust side and `JSON.parse`d
- *  uniformly on the frontend instead.
- */
 export type TableRowsResult = {
 	columns: string[],
 	rows: string[][],
@@ -625,11 +334,6 @@ export type TableRowsResult = {
 	durationMs: number,
 };
 
-/**
- *  One column/direction pair in the ordered list `fetch_table_rows`
- *  results are sorted by (applied left to right, like a SQL multi-column
- *  `ORDER BY`).
- */
 export type TableSort = {
 	column: string,
 	direction: SortDirection,

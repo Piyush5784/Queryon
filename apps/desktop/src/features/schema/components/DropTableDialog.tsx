@@ -11,8 +11,8 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from "@/src/app/components/ui/alert-dialog";
-import { Input } from "@/src/app/components/ui/input";
+} from "@queryon/ui/components/alert-dialog";
+import { Input } from "@queryon/ui/components/input";
 import { executeDdl } from "@/src/features/schema/api";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 

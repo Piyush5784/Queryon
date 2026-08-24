@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, CircleDot, Loader2, Play, Star } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { toast } from "@/src/app/components/ui/toast";
+import { Button } from "@queryon/ui/components/button";
+import { toast } from "@queryon/ui/components/toast";
+import { TooltipButton } from "@/src/components/TooltipButton";
 import {
   Dialog,
   DialogContent,
@@ -10,14 +11,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/src/app/components/ui/dialog";
-import { Input } from "@/src/app/components/ui/input";
-import { ExportButton } from "@/src/components/ExportButton";
+} from "@queryon/ui/components/dialog";
+import { Input } from "@queryon/ui/components/input";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-} from "@/src/app/components/ui/resizable";
+} from "@queryon/ui/components/resizable";
 import {
   beginTransaction,
   cancelQuery,
@@ -60,6 +60,9 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
   const schema = useSchemaNamespace(tab.connectionId);
   const activeTabIdRef = useRef(tab.id);
   activeTabIdRef.current = tab.id;
+  const sqlRef = useRef(sql);
+  sqlRef.current = sql;
+  const handleCancelRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     return () => {
@@ -67,6 +70,28 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
       clearQueryResultCache(activeTabIdRef.current).catch(() => {});
     };
   }, []);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const isSaveShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s";
+      if (isSaveShortcut) {
+        event.preventDefault();
+        if (!sqlRef.current.trim()) return;
+        setSaveTitle(tab.title);
+        setSaveError(null);
+        setSaveOpen(true);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        handleCancelRef.current();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab.id, tab.title]);
 
   async function handleExecute() {
     if (running || !sql.trim()) return;
@@ -115,6 +140,7 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
       setCancelling(false);
     }
   }
+  handleCancelRef.current = handleCancel;
 
   async function handleToggleCommitMode(mode: CommitMode) {
     if (mode === commitMode) return;
@@ -273,7 +299,7 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
               {(result.totalRowCount ?? result.rows.length) === 1 ? "" : "s"} · {result.durationMs}ms
             </span>
           )}
-          <Button
+          <TooltipButton
             size="xs"
             variant="outline"
             className="gap-1.5"
@@ -283,10 +309,12 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
               setSaveOpen(true);
             }}
             disabled={!sql.trim()}
+            tooltip="Save Query"
+            shortcut={["⌘", "S"]}
           >
             <Star className="size-3.5" />
             Save
-          </Button>
+          </TooltipButton>
           <Button size="xs" className="gap-1.5" onClick={handleExecute} disabled={running || !sql.trim()}>
             {running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
             Run
@@ -317,7 +345,12 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
               <p className="max-w-md text-sm text-destructive">{error}</p>
             </div>
           ) : result ? (
-            <QueryResults connectionId={tab.connectionId} tabId={tab.id} result={result} />
+            <QueryResults
+              connectionId={tab.connectionId}
+              tabId={tab.id}
+              sql={executedSql ?? sql}
+              result={result}
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               Run a query to see results here.
@@ -325,24 +358,6 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
           )}
         </ResizablePanel>
       </ResizablePanelGroup>
-
-      <div className="flex shrink-0 items-center justify-end border-t px-3 py-1.5">
-        {result?.kind === "rows" && (
-          <ExportButton
-            target={{
-              kind: "query",
-              connectionId: tab.connectionId,
-              tabId: tab.id,
-              sql: executedSql ?? sql,
-              page: {
-                columns: result.columns,
-                rows: result.rows.map((row) => row.map((cell) => JSON.stringify(cell))),
-              },
-            }}
-            fileBaseName="query_result"
-          />
-        )}
-      </div>
 
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
         <DialogContent className="sm:max-w-sm">

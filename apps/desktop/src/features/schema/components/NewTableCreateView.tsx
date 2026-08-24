@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Copy, Loader2, X } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Input } from "@/src/app/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/app/components/ui/tabs";
+import { Button } from "@queryon/ui/components/button";
+import { Input } from "@queryon/ui/components/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@queryon/ui/components/tabs";
 import { ColumnsTab, newColumnRow } from "@/src/features/schema/components/ColumnsTab";
 import { ConstraintsTab, newConstraintRow } from "@/src/features/schema/components/ConstraintsTab";
 import { DdlPreviewDialog } from "@/src/features/schema/components/DdlPreviewDialog";

@@ -13,7 +13,8 @@ import { isTabRunning } from "@/src/features/query/runningTabs";
 import { createQueryTabId } from "@/src/features/query/types";
 import { tableTabId } from "@/src/features/tables/types";
 import { AppLayout } from "@/src/layouts/AppLayout";
-import { ThemeProvider } from "@/src/app/components/theme-provider";
+import { ThemeProvider } from "@/src/components/theme-provider";
+import { UpdateChecker } from "@/src/components/UpdateChecker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,9 +25,10 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from "@/src/app/components/ui/alert-dialog";
-import { Toaster } from "@/src/app/components/ui/toast";
+} from "@queryon/ui/components/alert-dialog";
+import { Toaster } from "@queryon/ui/components/toast";
 import type { AppTab } from "@/src/app/tabs";
+import { useAppKeyboardShortcuts } from "@/src/app/useAppKeyboardShortcuts";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 import { AlertTriangle } from "lucide-react";
 import "@/src/app/styles/globals.css";
@@ -55,9 +57,7 @@ function App() {
   const activeConnection = connections.find((c) => c.id === activeConnectionId) ?? null;
 
   useEffect(() => {
-    listSavedConnections()
-      .then(setConnections)
-      .catch((err) => setConnectError(toErrorMessage(err)));
+    refreshSavedConnections();
   }, []);
 
   function refreshSavedConnections() {
@@ -104,6 +104,20 @@ function App() {
     }
     await deleteSavedConnection(connectionId);
     refreshSavedConnections();
+  }
+
+  async function handleDisconnect(connectionId: string) {
+    if (!connectedIds.has(connectionId)) return;
+    await disconnect(connectionId);
+    setConnectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(connectionId);
+      return next;
+    });
+    if (activeConnectionId === connectionId) {
+      setActiveConnectionId(null);
+    }
+    setTabs((prev) => prev.filter((t) => t.connectionId !== connectionId));
   }
 
   function handleOpenTable(connectionId: string, schema: string, table: string) {
@@ -176,6 +190,15 @@ function App() {
     closeTab(id);
   }
 
+  useAppKeyboardShortcuts({
+    activeTabId,
+    tabs,
+    onCloseActiveTab: handleCloseTab,
+    onNewQuery: () => handleNewQuery(),
+    onNewConnection: () => setDialogOpen(true),
+    onSelectTab: handleSelectTab,
+  });
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="queryon-theme">
       <Toaster>
@@ -190,6 +213,7 @@ function App() {
           queryRefreshToken={queryRefreshToken}
           onSelectConnection={handleSelectConnection}
           onDeleteConnection={handleDeleteConnection}
+          onDisconnect={handleDisconnect}
           onOpenTable={handleOpenTable}
           onNewConnection={() => setDialogOpen(true)}
           onNewQuery={handleNewQuery}
@@ -241,6 +265,8 @@ function App() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <UpdateChecker />
       </div>
       </Toaster>
     </ThemeProvider>

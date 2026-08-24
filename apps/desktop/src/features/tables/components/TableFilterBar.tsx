@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { Plus, Search, X } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Input } from "@/src/app/components/ui/input";
+import { Button } from "@queryon/ui/components/button";
+import { Input } from "@queryon/ui/components/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/app/components/ui/select";
+} from "@queryon/ui/components/select";
 import type { FilterOperator, TableFilter } from "@/src/features/tables/api";
 
 interface TableFilterBarProps {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -22,12 +22,13 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from "@/src/app/components/ui/alert-dialog";
-import { Button } from "@/src/app/components/ui/button";
-import { toast } from "@/src/app/components/ui/toast";
-import { Input } from "@/src/app/components/ui/input";
+} from "@queryon/ui/components/alert-dialog";
+import { Button } from "@queryon/ui/components/button";
+import { toast } from "@queryon/ui/components/toast";
+import { Input } from "@queryon/ui/components/input";
 import { CopyButton } from "@/src/components/CopyButton";
 import { ExportButton } from "@/src/components/ExportButton";
+import { TooltipButton } from "@/src/components/TooltipButton";
 import { DataGrid, type JsonCellMode, type RowEdit } from "@/src/features/tables/components/DataGrid";
 import { SchemaGraphView } from "@/src/features/schema/components/SchemaGraphView";
 import { TableStructureView } from "@/src/features/schema/components/TableStructureView";
@@ -159,6 +160,20 @@ export function TableView({ tab }: TableViewProps) {
       .catch((err) => setError(toErrorMessage(err)))
       .finally(() => setLoading(false));
   }
+
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "F5") {
+        event.preventDefault();
+        refreshRef.current();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   function changePage(next: number) {
     resetPendingState();
@@ -374,9 +389,16 @@ export function TableView({ tab }: TableViewProps) {
             <Plus className="size-3.5" />
             Add Row
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={refresh} disabled={loading}>
+          <TooltipButton
+            variant="ghost"
+            size="icon-sm"
+            onClick={refresh}
+            disabled={loading}
+            tooltip="Refresh"
+            shortcut={["F5"]}
+          >
             <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-          </Button>
+          </TooltipButton>
         </div>
         )}
         {viewMode === "structure" && (
@@ -557,7 +579,10 @@ export function TableView({ tab }: TableViewProps) {
           >
             <ChevronLeft className="size-3.5" />
           </Button>
-          <span className="text-xs text-muted-foreground">Page {page + 1}</span>
+          <span className="text-xs text-muted-foreground">
+            Page {page + 1}
+            {totalRowCount !== null && ` of ${Math.max(1, Math.ceil(totalRowCount / pageSize)).toLocaleString()}`}
+          </span>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -589,6 +614,9 @@ export function TableView({ tab }: TableViewProps) {
               {result.rowCount.toLocaleString()}
               {totalRowCount !== null && ` / ${totalRowCount.toLocaleString()}`} rows
             </span>
+            {/* <span className="text-muted-foreground/60">·</span> */}
+            {/* <span>{pageSize.toLocaleString()} per page</span> */}
+            <span className="text-muted-foreground/60">·</span>
             <span>{result.durationMs}ms</span>
           </div>
         )}

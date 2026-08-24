@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Download } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
 import { ExportDialog } from "@/src/components/ExportDialog";
 import type { ExportTarget } from "@/src/components/exportTypes";
 

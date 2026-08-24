@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { ArrowLeft, CheckCircle2, FolderOpen, Link2, Loader2, XCircle } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Checkbox } from "@/src/app/components/ui/checkbox";
+import { Button } from "@queryon/ui/components/button";
+import { Checkbox } from "@queryon/ui/components/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/src/app/components/ui/dialog";
+} from "@queryon/ui/components/dialog";
 import {
   Field,
   FieldContent,
@@ -18,16 +18,16 @@ import {
   FieldGroup,
   FieldLabel,
   FieldSeparator,
-} from "@/src/app/components/ui/field";
-import { Input } from "@/src/app/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/src/app/components/ui/radio-group";
+} from "@queryon/ui/components/field";
+import { Input } from "@queryon/ui/components/input";
+import { RadioGroup, RadioGroupItem } from "@queryon/ui/components/radio-group";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/app/components/ui/select";
+} from "@queryon/ui/components/select";
 import { connect, pickDuckdbFile, pickSshKeyFile, pickSqliteFile, saveConnection, testConnection } from "@/src/features/connections/api";
 import {
   createEmptyConnectionDraft,

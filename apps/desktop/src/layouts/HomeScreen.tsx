@@ -11,15 +11,15 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from "@/src/app/components/ui/alert-dialog";
-import { Button } from "@/src/app/components/ui/button";
+} from "@queryon/ui/components/alert-dialog";
+import { Button } from "@queryon/ui/components/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/src/app/components/ui/card";
+} from "@queryon/ui/components/card";
 import {
   Empty,
   EmptyContent,
@@ -27,7 +27,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/src/app/components/ui/empty";
+} from "@queryon/ui/components/empty";
 import { EngineIcon } from "@/src/features/connections/components/EngineIcon";
 import { engineOf, toDisplayUrl, type SavedConnectionProfile } from "@/src/features/connections/types";
 

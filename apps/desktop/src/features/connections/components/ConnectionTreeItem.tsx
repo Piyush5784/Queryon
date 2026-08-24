@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plug,
+  PlugZap,
   Plus,
   Star,
   Table2,
@@ -22,7 +23,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/src/app/components/ui/dropdown-menu";
+} from "@queryon/ui/components/dropdown-menu";
 import {
   SidebarMenuAction,
   SidebarMenuButton,
@@ -30,7 +31,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-} from "@/src/app/components/ui/sidebar";
+} from "@queryon/ui/components/sidebar";
 import { RenameConnectionDialog } from "@/src/features/connections/components/RenameConnectionDialog";
 import {
   engineOf,
@@ -61,6 +62,7 @@ interface ConnectionTreeItemProps {
   isConnecting: boolean;
   queryRefreshToken: number;
   onSelect: () => void;
+  onDisconnect: () => void;
   onOpenTable: (schema: string, table: string) => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (sql: string) => void;
@@ -75,6 +77,7 @@ export function ConnectionTreeItem({
   isConnecting,
   queryRefreshToken,
   onSelect,
+  onDisconnect,
   onOpenTable,
   onOpenSavedQuery,
   onOpenHistoryEntry,
@@ -91,6 +94,14 @@ export function ConnectionTreeItem({
   useEffect(() => {
     if (isActive) setExpanded(true);
   }, [isActive]);
+
+  useEffect(() => {
+    if (!isConnected) {
+      setExpanded(false);
+      setTables(null);
+      setError(null);
+    }
+  }, [isConnected]);
 
   useEffect(() => {
     if (!expanded || !isConnected || tables !== null) return;
@@ -167,10 +178,16 @@ export function ConnectionTreeItem({
             Copy Connection String
           </DropdownMenuItem>
           {isConnected && (
-            <DropdownMenuItem onClick={() => setExportOpen(true)}>
-              <Download className="size-3.5" />
-              Export Tables…
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem onClick={() => setExportOpen(true)}>
+                <Download className="size-3.5" />
+                Export Tables…
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={onDisconnect}>
+                <PlugZap className="size-3.5" />
+                Disconnect
+              </DropdownMenuItem>
+            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

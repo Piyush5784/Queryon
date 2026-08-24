@@ -4,6 +4,8 @@
 @import "@fontsource-variable/geist";
 @import "@glideapps/glide-data-grid/dist/index.css";
 
+@source "../../../../../packages/ui/src/**/*.{ts,tsx}";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

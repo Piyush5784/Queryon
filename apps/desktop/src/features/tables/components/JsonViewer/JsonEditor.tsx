@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Textarea } from "@/src/app/components/ui/textarea";
+import { Button } from "@queryon/ui/components/button";
+import { Textarea } from "@queryon/ui/components/textarea";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
 
 interface JsonEditorProps {

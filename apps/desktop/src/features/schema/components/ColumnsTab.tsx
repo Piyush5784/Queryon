@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pencil, Plus, RotateCcw, X } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
 import {
   Combobox,
   ComboboxContent,
@@ -9,15 +9,15 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-} from "@/src/app/components/ui/combobox";
-import { Input } from "@/src/app/components/ui/input";
+} from "@queryon/ui/components/combobox";
+import { Input } from "@queryon/ui/components/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/app/components/ui/select";
+} from "@queryon/ui/components/select";
 import { makeTempId, type StagedColumnEdit, type StagedNewColumn } from "@/src/features/schema/staging";
 import type { ColumnInfo } from "@/src/features/tables/api";
 

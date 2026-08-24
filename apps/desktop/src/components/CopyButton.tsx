@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Copy } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/src/app/components/ui/dropdown-menu";
+} from "@queryon/ui/components/dropdown-menu";
 
 interface CopyButtonProps {
   columns: string[];

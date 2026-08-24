@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 import { Plus, RotateCcw, X } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Checkbox } from "@/src/app/components/ui/checkbox";
-import { Input } from "@/src/app/components/ui/input";
+import { Button } from "@queryon/ui/components/button";
+import { Checkbox } from "@queryon/ui/components/checkbox";
+import { Input } from "@queryon/ui/components/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/app/components/ui/select";
+} from "@queryon/ui/components/select";
 import type { ConstraintInfo, ConstraintKind, ForeignKeyAction } from "@/src/features/schema/api";
 import { type SchemaCapabilities } from "@/src/features/schema/capabilities";
 import { makeTempId, type StagedNewConstraint } from "@/src/features/schema/staging";

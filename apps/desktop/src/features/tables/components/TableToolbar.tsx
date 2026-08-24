@@ -1,7 +1,7 @@
 import { ArrowUpDown, Columns3, ListFilter } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/src/app/components/ui/popover";
+import { Button } from "@queryon/ui/components/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@queryon/ui/components/popover";
 import { TableColumnsPanel } from "@/src/features/tables/components/TableColumnsPanel";
 import type { TableFilter, TableSort } from "@/src/features/tables/api";
 
