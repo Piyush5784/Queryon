@@ -1,0 +1,65 @@
+.dockview-theme-queryon {
+  --dv-group-view-background-color: var(--background);
+  --dv-tabs-and-actions-container-background-color: var(--muted);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--background);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--muted);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--muted);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--muted);
+  --dv-tab-divider-color: var(--border);
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-separator-border: var(--border);
+  --dv-paneview-header-border-color: var(--border);
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-drag-over-background-color: color-mix(in oklch, var(--primary), transparent 85%);
+  --dv-drag-over-border-color: var(--primary);
+  --dv-edge-dock-indicator-color: var(--primary);
+  --dv-icon-hover-background-color: var(--muted);
+  /* --dv-floating-border: 1px solid var(--border); */
+  --dv-tab-font-size: 12px;
+  --dv-tab-margin: 0;
+  /* --dv-border-radius: var(--radius-lg); */
+  /* --dv-tab-border-radius: 0px; */
+  /* --dv-sash-color: var(--border); */
+  --dv-active-sash-color: var(--primary);
+  font-family: inherit;
+}
+
+.dockview-theme-queryon .dv-groupview {
+  /* border-radius: var(--radius-lg); */
+}
+
+.dockview-theme-queryon .dv-content-container {
+  /* border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg); */
+  overflow: hidden;
+}
+
+.dockview-theme-queryon .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash,
+.dockview-theme-queryon .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash {
+  background-color: var(--dv-sash-color);
+}
+
+.dockview-theme-queryon .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash {
+  width: 2px;
+}
+
+.dockview-theme-queryon .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash {
+  height: 2px;
+}
+
+.dockview-theme-queryon .dv-scrollable,
+.dockview-theme-queryon .dv-tabs-container {
+  overflow: hidden !important;
+}
+
+.dockview-theme-queryon .dv-scrollable .dv-scrollbar {
+  display: none;
+}
+
+.dv-tab{
+  border-radius: 5px;
+}

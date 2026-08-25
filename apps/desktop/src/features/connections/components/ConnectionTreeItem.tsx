@@ -61,6 +61,7 @@ interface ConnectionTreeItemProps {
   isConnected: boolean;
   isConnecting: boolean;
   queryRefreshToken: number;
+  collapseSignal: number;
   onSelect: () => void;
   onDisconnect: () => void;
   onOpenTable: (schema: string, table: string) => void;
@@ -76,6 +77,7 @@ export function ConnectionTreeItem({
   isConnected,
   isConnecting,
   queryRefreshToken,
+  collapseSignal,
   onSelect,
   onDisconnect,
   onOpenTable,
@@ -102,6 +104,11 @@ export function ConnectionTreeItem({
       setError(null);
     }
   }, [isConnected]);
+
+  useEffect(() => {
+    if (collapseSignal > 0) setExpanded(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapseSignal]);
 
   useEffect(() => {
     if (!expanded || !isConnected || tables !== null) return;

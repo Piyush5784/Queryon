@@ -9,6 +9,7 @@ import {
 import { ConnectionDialog } from "@/src/features/connections/components/ConnectionDialog";
 import { engineOf, type ConnectionProfile, type SavedConnectionProfile } from "@/src/features/connections/types";
 import type { SavedQuery } from "@/src/features/query/api";
+import { clearQueryDraft } from "@/src/features/query/queryDrafts";
 import { isTabRunning } from "@/src/features/query/runningTabs";
 import { createQueryTabId } from "@/src/features/query/types";
 import { tableTabId } from "@/src/features/tables/types";
@@ -26,8 +27,9 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "@queryon/ui/components/alert-dialog";
-import { Toaster } from "@queryon/ui/components/toast";
+import { Toaster, toast } from "@queryon/ui/components/toast";
 import type { AppTab } from "@/src/app/tabs";
+import { detachTab, onRedockTab } from "@/src/app/detachedWindow";
 import { useAppKeyboardShortcuts } from "@/src/app/useAppKeyboardShortcuts";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 import { AlertTriangle } from "lucide-react";
@@ -58,6 +60,17 @@ function App() {
 
   useEffect(() => {
     refreshSavedConnections();
+  }, []);
+
+  useEffect(() => {
+    const unlisten = onRedockTab((tab) => {
+      setTabs((prev) => (prev.some((t) => t.id === tab.id) ? prev : [...prev, tab]));
+      setActiveTabId(tab.id);
+      setShowHome(false);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
   function refreshSavedConnections() {
@@ -117,7 +130,13 @@ function App() {
     if (activeConnectionId === connectionId) {
       setActiveConnectionId(null);
     }
-    setTabs((prev) => prev.filter((t) => t.connectionId !== connectionId));
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.connectionId !== connectionId);
+      prev.forEach((t) => {
+        if (t.connectionId === connectionId) clearQueryDraft(t.id);
+      });
+      return next;
+    });
   }
 
   function handleOpenTable(connectionId: string, schema: string, table: string) {
@@ -173,6 +192,7 @@ function App() {
   }
 
   function closeTab(id: string) {
+    clearQueryDraft(id);
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== id);
       if (activeTabId === id) {
@@ -188,6 +208,35 @@ function App() {
       return;
     }
     closeTab(id);
+  }
+
+  function handleReorderTabs(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    setTabs((prev) => {
+      const fromIndex = prev.findIndex((t) => t.id === fromId);
+      const toIndex = prev.findIndex((t) => t.id === toId);
+      if (fromIndex === -1 || toIndex === -1) return prev;
+      const next = [...prev];
+      [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
+      return next;
+    });
+  }
+
+  async function handleDetachTab(id: string) {
+    const tab = tabs.find((t) => t.id === id);
+    if (!tab) return;
+    try {
+      await detachTab(tab);
+      setTabs((prev) => {
+        const next = prev.filter((t) => t.id !== id);
+        if (activeTabId === id) {
+          setActiveTabId(next.length > 0 ? next[next.length - 1].id : null);
+        }
+        return next;
+      });
+    } catch (err) {
+      toast.add({ type: "error", title: "Failed to detach tab", description: toErrorMessage(err) });
+    }
   }
 
   useAppKeyboardShortcuts({
@@ -226,6 +275,8 @@ function App() {
           activeTabId={activeTabId}
           onSelectTab={handleSelectTab}
           onCloseTab={handleCloseTab}
+          onReorderTabs={handleReorderTabs}
+          onDetachTab={handleDetachTab}
           onQueryActivity={handleQueryActivity}
         />
 

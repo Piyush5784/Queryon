@@ -3,6 +3,7 @@ import { AlertCircle, CircleDot, Loader2, Play, Star } from "lucide-react";
 
 import { Button } from "@queryon/ui/components/button";
 import { toast } from "@queryon/ui/components/toast";
+import { LayoutPicker } from "@/src/components/LayoutPicker";
 import { TooltipButton } from "@/src/components/TooltipButton";
 import {
   Dialog,
@@ -13,11 +14,7 @@ import {
   DialogTitle,
 } from "@queryon/ui/components/dialog";
 import { Input } from "@queryon/ui/components/input";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@queryon/ui/components/resizable";
+import { DockLayout, type DockLayoutHandle } from "@/src/components/DockLayout";
 import {
   beginTransaction,
   cancelQuery,
@@ -31,6 +28,7 @@ import {
 import { QueryResults } from "@/src/features/query/components/QueryResults";
 import { RunningQueryOverlay } from "@/src/features/query/components/RunningQueryOverlay";
 import { SqlEditor } from "@/src/features/query/components/SqlEditor";
+import { getQueryDraft, setQueryDraft } from "@/src/features/query/queryDrafts";
 import { markTabIdle, markTabRunning } from "@/src/features/query/runningTabs";
 import type { QueryTab } from "@/src/features/query/types";
 import { useSchemaNamespace } from "@/src/features/query/useSchemaNamespace";
@@ -44,7 +42,7 @@ interface QueryTabViewProps {
 }
 
 export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
-  const [sql, setSql] = useState(tab.initialSql ?? "");
+  const [sql, setSql] = useState(() => getQueryDraft(tab.id) ?? tab.initialSql ?? "");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [executedSql, setExecutedSql] = useState<string | null>(null);
@@ -62,7 +60,12 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
   activeTabIdRef.current = tab.id;
   const sqlRef = useRef(sql);
   sqlRef.current = sql;
+
+  useEffect(() => {
+    setQueryDraft(tab.id, sql);
+  }, [tab.id, sql]);
   const handleCancelRef = useRef<() => void>(() => {});
+  const dockRef = useRef<DockLayoutHandle>(null);
 
   useEffect(() => {
     return () => {
@@ -299,6 +302,7 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
               {(result.totalRowCount ?? result.rows.length) === 1 ? "" : "s"} · {result.durationMs}ms
             </span>
           )}
+          <LayoutPicker onSelect={(preset) => dockRef.current?.applyLayout(preset)} />
           <TooltipButton
             size="xs"
             variant="outline"
@@ -325,19 +329,24 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
         </div>
       </div>
 
-      <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
-        <ResizablePanel defaultSize={45} minSize={50}>
-          <SqlEditor
-            value={sql}
-            onChange={setSql}
-            onExecute={handleExecute}
-            disabled={running}
-            schema={schema}
-          />
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={55} minSize={15}>
-          {running ? (
+      <DockLayout
+        ref={dockRef}
+        storageKey={`queryon:dock:query:${tab.id}`}
+        className="min-h-0 flex-1"
+        panels={[
+          { id: "editor", title: "SQL Editor", params: "editor" as const },
+          { id: "results", title: "Results", params: "results" as const },
+        ]}
+        render={(panel) =>
+          panel === "editor" ? (
+            <SqlEditor
+              value={sql}
+              onChange={setSql}
+              onExecute={handleExecute}
+              disabled={running}
+              schema={schema}
+            />
+          ) : running ? (
             <RunningQueryOverlay cancelling={cancelling} onCancel={handleCancel} />
           ) : error ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -355,9 +364,9 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               Run a query to see results here.
             </div>
-          )}
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          )
+        }
+      />
 
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
         <DialogContent className="sm:max-w-sm">

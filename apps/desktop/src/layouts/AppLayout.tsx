@@ -37,6 +37,8 @@ interface AppLayoutProps {
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
+  onReorderTabs: (fromId: string, toId: string) => void;
+  onDetachTab: (id: string) => void;
   onQueryActivity: () => void;
 }
 
@@ -63,6 +65,8 @@ export function AppLayout({
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onReorderTabs,
+  onDetachTab,
   onQueryActivity,
 }: AppLayoutProps) {
   return (
@@ -136,6 +140,8 @@ export function AppLayout({
             activeTabId={activeTabId}
             onSelectTab={onSelectTab}
             onCloseTab={onCloseTab}
+            onReorderTabs={onReorderTabs}
+            onDetachTab={onDetachTab}
             onNewConnection={onNewConnection}
             onQueryActivity={onQueryActivity}
           />

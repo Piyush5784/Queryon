@@ -1,4 +1,5 @@
-import { Database, Moon, Plus, Sun } from "lucide-react";
+import { useState } from "react";
+import { Database, Moon, PanelTopClose, Plus, Sun } from "lucide-react";
 
 import { Button } from "@queryon/ui/components/button";
 import { TooltipButton } from "@/src/components/TooltipButton";
@@ -50,6 +51,7 @@ export function Sidebar({
   onConnectionRenamed,
 }: SidebarProps) {
   const { theme, setTheme } = useTheme();
+  const [collapseSignal, setCollapseSignal] = useState(0);
 
   return (
     <SidebarPrimitive collapsible="icon">
@@ -75,6 +77,13 @@ export function Sidebar({
             <Database className="size-3.5" />
             Connections
           </SidebarGroupLabel>
+          <SidebarGroupAction
+            title="Collapse all"
+            className="right-9"
+            onClick={() => setCollapseSignal((n) => n + 1)}
+          >
+            <PanelTopClose />
+          </SidebarGroupAction>
           <SidebarGroupAction title="Add connection" onClick={onNewConnection}>
             <Plus />
           </SidebarGroupAction>
@@ -93,6 +102,7 @@ export function Sidebar({
                     isConnected={connectedIds.has(conn.id)}
                     isConnecting={connectingId === conn.id}
                     queryRefreshToken={queryRefreshToken}
+                    collapseSignal={collapseSignal}
                     onSelect={() => onSelectConnection(conn.id)}
                     onDisconnect={() => onDisconnect(conn.id)}
                     onOpenTable={(schema, table) =>

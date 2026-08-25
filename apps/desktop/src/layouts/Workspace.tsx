@@ -27,6 +27,8 @@ interface WorkspaceProps {
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
+  onReorderTabs: (fromId: string, toId: string) => void;
+  onDetachTab: (id: string) => void;
   onNewConnection: () => void;
   onQueryActivity: () => void;
 }
@@ -44,6 +46,8 @@ export function Workspace({
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onReorderTabs,
+  onDetachTab,
   onNewConnection,
   onQueryActivity,
 }: WorkspaceProps) {
@@ -71,6 +75,8 @@ export function Workspace({
         activeTabId={activeTabId}
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
+        onReorderTabs={onReorderTabs}
+        onDetachTab={onDetachTab}
       />
 
       <div className="min-h-0 flex-1">
