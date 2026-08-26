@@ -1,6 +1,8 @@
-import { Database, Moon, Plus, Sun } from "lucide-react";
+import { useState } from "react";
+import { Database, Moon, PanelTopClose, Plus, Sun } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
+import { TooltipButton } from "@/src/components/TooltipButton";
 import {
   Sidebar as SidebarPrimitive,
   SidebarContent,
@@ -11,8 +13,8 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-} from "@/src/app/components/ui/sidebar";
-import { useTheme } from "@/src/app/components/theme-provider";
+} from "@queryon/ui/components/sidebar";
+import { useTheme } from "@/src/components/theme-provider";
 import { ConnectionTreeItem } from "@/src/features/connections/components/ConnectionTreeItem";
 import type { SavedConnectionProfile } from "@/src/features/connections/types";
 import type { SavedQuery } from "@/src/features/query/api";
@@ -24,7 +26,10 @@ interface SidebarProps {
   activeConnectionId: string | null;
   queryRefreshToken: number;
   onSelectConnection: (id: string) => void;
+  onDisconnect: (id: string) => void;
+  onDeleteConnection: (id: string) => void;
   onOpenTable: (connectionId: string, schema: string, table: string) => void;
+  onOpenCollection: (connectionId: string, database: string, collection: string) => void;
   onNewConnection: () => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (connectionId: string, sql: string) => void;
@@ -39,7 +44,10 @@ export function Sidebar({
   activeConnectionId,
   queryRefreshToken,
   onSelectConnection,
+  onDisconnect,
+  onDeleteConnection,
   onOpenTable,
+  onOpenCollection,
   onNewConnection,
   onOpenSavedQuery,
   onOpenHistoryEntry,
@@ -47,21 +55,24 @@ export function Sidebar({
   onConnectionRenamed,
 }: SidebarProps) {
   const { theme, setTheme } = useTheme();
+  const [collapseSignal, setCollapseSignal] = useState(0);
 
   return (
     <SidebarPrimitive collapsible="icon">
       <SidebarHeader className="gap-2 px-2 py-2">
-        <Button
+        <TooltipButton
           variant="outline"
           size="sm"
           className="justify-start gap-2"
           onClick={onNewConnection}
+          tooltip="New Connection"
+          shortcut={["⌘", "N"]}
         >
           <Plus className="size-4" />
           <span className="group-data-[collapsible=icon]:hidden">
             New Connection
           </span>
-        </Button>
+        </TooltipButton>
       </SidebarHeader>
 
       <SidebarContent>
@@ -70,6 +81,13 @@ export function Sidebar({
             <Database className="size-3.5" />
             Connections
           </SidebarGroupLabel>
+          <SidebarGroupAction
+            title="Collapse all"
+            className="right-9"
+            onClick={() => setCollapseSignal((n) => n + 1)}
+          >
+            <PanelTopClose />
+          </SidebarGroupAction>
           <SidebarGroupAction title="Add connection" onClick={onNewConnection}>
             <Plus />
           </SidebarGroupAction>
@@ -88,9 +106,15 @@ export function Sidebar({
                     isConnected={connectedIds.has(conn.id)}
                     isConnecting={connectingId === conn.id}
                     queryRefreshToken={queryRefreshToken}
+                    collapseSignal={collapseSignal}
                     onSelect={() => onSelectConnection(conn.id)}
+                    onDisconnect={() => onDisconnect(conn.id)}
+                    onDeleteConnection={() => onDeleteConnection(conn.id)}
                     onOpenTable={(schema, table) =>
                       onOpenTable(conn.id, schema, table)
+                    }
+                    onOpenCollection={(database, collection) =>
+                      onOpenCollection(conn.id, database, collection)
                     }
                     onOpenSavedQuery={onOpenSavedQuery}
                     onOpenHistoryEntry={(sql) => onOpenHistoryEntry(conn.id, sql)}

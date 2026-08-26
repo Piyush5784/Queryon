@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/src/app/components/ui/dialog";
-import { Input } from "@/src/app/components/ui/input";
+} from "@queryon/ui/components/dialog";
+import { Input } from "@queryon/ui/components/input";
 import { DdlPreviewDialog } from "@/src/features/schema/components/DdlPreviewDialog";
 import type { DdlStatement } from "@/src/features/schema/api";
 

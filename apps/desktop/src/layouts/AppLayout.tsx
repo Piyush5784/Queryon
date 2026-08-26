@@ -1,13 +1,13 @@
 import { PlugZap, TerminalSquare } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Separator } from "@/src/app/components/ui/separator";
+import { Separator } from "@queryon/ui/components/separator";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/src/app/components/ui/sidebar";
-import { TooltipProvider } from "@/src/app/components/ui/tooltip";
+} from "@queryon/ui/components/sidebar";
+import { TooltipProvider } from "@queryon/ui/components/tooltip";
+import { TooltipButton } from "@/src/components/TooltipButton";
 import type { AppTab } from "@/src/app/tabs";
 import type { SavedConnectionProfile } from "@/src/features/connections/types";
 import type { SavedQuery } from "@/src/features/query/api";
@@ -24,7 +24,9 @@ interface AppLayoutProps {
   queryRefreshToken: number;
   onSelectConnection: (id: string) => void;
   onDeleteConnection: (id: string) => void;
+  onDisconnect: (id: string) => void;
   onOpenTable: (connectionId: string, schema: string, table: string) => void;
+  onOpenCollection: (connectionId: string, database: string, collection: string) => void;
   onNewConnection: () => void;
   onNewQuery: (connectionId?: string) => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
@@ -36,6 +38,8 @@ interface AppLayoutProps {
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
+  onReorderTabs: (fromId: string, toId: string) => void;
+  onDetachTab: (id: string) => void;
   onQueryActivity: () => void;
 }
 
@@ -49,7 +53,9 @@ export function AppLayout({
   queryRefreshToken,
   onSelectConnection,
   onDeleteConnection,
+  onDisconnect,
   onOpenTable,
+  onOpenCollection,
   onNewConnection,
   onNewQuery,
   onOpenSavedQuery,
@@ -61,6 +67,8 @@ export function AppLayout({
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onReorderTabs,
+  onDetachTab,
   onQueryActivity,
 }: AppLayoutProps) {
   return (
@@ -73,7 +81,10 @@ export function AppLayout({
           activeConnectionId={activeConnectionId}
           queryRefreshToken={queryRefreshToken}
           onSelectConnection={onSelectConnection}
+          onDisconnect={onDisconnect}
+          onDeleteConnection={onDeleteConnection}
           onOpenTable={onOpenTable}
+          onOpenCollection={onOpenCollection}
           onNewConnection={onNewConnection}
           onOpenSavedQuery={onOpenSavedQuery}
           onOpenHistoryEntry={onOpenHistoryEntry}
@@ -107,10 +118,17 @@ export function AppLayout({
               </div>
             </div>
             {activeConnection && !showHome && (
-              <Button size="xs" variant="outline" className="gap-1.5" onClick={() => onNewQuery()}>
+              <TooltipButton
+                size="xs"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => onNewQuery()}
+                tooltip="New Query"
+                shortcut={["⌘", "T"]}
+              >
                 <TerminalSquare className="size-3.5" />
                 New Query
-              </Button>
+              </TooltipButton>
             )}
           </header>
           <Workspace
@@ -126,6 +144,8 @@ export function AppLayout({
             activeTabId={activeTabId}
             onSelectTab={onSelectTab}
             onCloseTab={onCloseTab}
+            onReorderTabs={onReorderTabs}
+            onDetachTab={onDetachTab}
             onNewConnection={onNewConnection}
             onQueryActivity={onQueryActivity}
           />

@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { Plus, Search, X } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/app/components/ui/select";
+} from "@queryon/ui/components/select";
 import type { SortDirection, TableSort } from "@/src/features/tables/api";
 
 interface TableSortBarProps {

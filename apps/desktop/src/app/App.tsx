@@ -7,13 +7,16 @@ import {
   listSavedConnections,
 } from "@/src/features/connections/api";
 import { ConnectionDialog } from "@/src/features/connections/components/ConnectionDialog";
-import { engineOf, type ConnectionProfile, type SavedConnectionProfile } from "@/src/features/connections/types";
+import { engineOf, isDocumentEngine, type ConnectionProfile, type SavedConnectionProfile } from "@/src/features/connections/types";
+import { collectionTabId, docConnectSaved, docDisconnect } from "@/src/features/documents/api";
 import type { SavedQuery } from "@/src/features/query/api";
+import { clearQueryDraft } from "@/src/features/query/queryDrafts";
 import { isTabRunning } from "@/src/features/query/runningTabs";
 import { createQueryTabId } from "@/src/features/query/types";
 import { tableTabId } from "@/src/features/tables/types";
 import { AppLayout } from "@/src/layouts/AppLayout";
-import { ThemeProvider } from "@/src/app/components/theme-provider";
+import { ThemeProvider } from "@/src/components/theme-provider";
+import { UpdateChecker } from "@/src/components/UpdateChecker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,9 +27,11 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from "@/src/app/components/ui/alert-dialog";
-import { Toaster } from "@/src/app/components/ui/toast";
+} from "@queryon/ui/components/alert-dialog";
+import { Toaster, toast } from "@queryon/ui/components/toast";
 import type { AppTab } from "@/src/app/tabs";
+import { detachTab, onRedockTab } from "@/src/app/detachedWindow";
+import { useAppKeyboardShortcuts } from "@/src/app/useAppKeyboardShortcuts";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 import { AlertTriangle } from "lucide-react";
 import "@/src/app/styles/globals.css";
@@ -55,9 +60,18 @@ function App() {
   const activeConnection = connections.find((c) => c.id === activeConnectionId) ?? null;
 
   useEffect(() => {
-    listSavedConnections()
-      .then(setConnections)
-      .catch((err) => setConnectError(toErrorMessage(err)));
+    refreshSavedConnections();
+  }, []);
+
+  useEffect(() => {
+    const unlisten = onRedockTab((tab) => {
+      setTabs((prev) => (prev.some((t) => t.id === tab.id) ? prev : [...prev, tab]));
+      setActiveTabId(tab.id);
+      setShowHome(false);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
   function refreshSavedConnections() {
@@ -80,7 +94,12 @@ function App() {
     }
     setConnectingId(connectionId);
     try {
-      await connectSaved(connectionId);
+      const connection = connections.find((c) => c.id === connectionId);
+      if (isDocumentEngine(engineOf(connection ?? {}))) {
+        await docConnectSaved(connectionId);
+      } else {
+        await connectSaved(connectionId);
+      }
       setConnectedIds((prev) => new Set(prev).add(connectionId));
       setActiveConnectionId(connectionId);
     } catch (err) {
@@ -92,7 +111,12 @@ function App() {
 
   async function handleDeleteConnection(connectionId: string) {
     if (connectedIds.has(connectionId)) {
-      await disconnect(connectionId);
+      const connection = connections.find((c) => c.id === connectionId);
+      if (isDocumentEngine(engineOf(connection ?? {}))) {
+        await docDisconnect(connectionId);
+      } else {
+        await disconnect(connectionId);
+      }
       setConnectedIds((prev) => {
         const next = new Set(prev);
         next.delete(connectionId);
@@ -102,8 +126,43 @@ function App() {
     if (activeConnectionId === connectionId) {
       setActiveConnectionId(null);
     }
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.connectionId !== connectionId);
+      prev.forEach((t) => {
+        if (t.connectionId === connectionId) clearQueryDraft(t.id);
+      });
+      if (activeTabId && !next.some((t) => t.id === activeTabId)) {
+        setActiveTabId(next.length > 0 ? next[next.length - 1].id : null);
+      }
+      return next;
+    });
     await deleteSavedConnection(connectionId);
     refreshSavedConnections();
+  }
+
+  async function handleDisconnect(connectionId: string) {
+    if (!connectedIds.has(connectionId)) return;
+    const connection = connections.find((c) => c.id === connectionId);
+    if (isDocumentEngine(engineOf(connection ?? {}))) {
+      await docDisconnect(connectionId);
+    } else {
+      await disconnect(connectionId);
+    }
+    setConnectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(connectionId);
+      return next;
+    });
+    if (activeConnectionId === connectionId) {
+      setActiveConnectionId(null);
+    }
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.connectionId !== connectionId);
+      prev.forEach((t) => {
+        if (t.connectionId === connectionId) clearQueryDraft(t.id);
+      });
+      return next;
+    });
   }
 
   function handleOpenTable(connectionId: string, schema: string, table: string) {
@@ -116,6 +175,20 @@ function App() {
       prev.some((t) => t.id === id)
         ? prev
         : [...prev, { type: "table", id, connectionId, connectionName, engine, schema, table }]
+    );
+    setActiveTabId(id);
+    setShowHome(false);
+  }
+
+  function handleOpenCollection(connectionId: string, database: string, collection: string) {
+    const id = collectionTabId(connectionId, database, collection);
+    const connection = connections.find((c) => c.id === connectionId);
+    const connectionName = connection?.name ?? "";
+
+    setTabs((prev) =>
+      prev.some((t) => t.id === id)
+        ? prev
+        : [...prev, { type: "collection", id, connectionId, connectionName, database, collection }]
     );
     setActiveTabId(id);
     setShowHome(false);
@@ -159,6 +232,7 @@ function App() {
   }
 
   function closeTab(id: string) {
+    clearQueryDraft(id);
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== id);
       if (activeTabId === id) {
@@ -176,6 +250,44 @@ function App() {
     closeTab(id);
   }
 
+  function handleReorderTabs(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    setTabs((prev) => {
+      const fromIndex = prev.findIndex((t) => t.id === fromId);
+      const toIndex = prev.findIndex((t) => t.id === toId);
+      if (fromIndex === -1 || toIndex === -1) return prev;
+      const next = [...prev];
+      [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
+      return next;
+    });
+  }
+
+  async function handleDetachTab(id: string) {
+    const tab = tabs.find((t) => t.id === id);
+    if (!tab) return;
+    try {
+      await detachTab(tab);
+      setTabs((prev) => {
+        const next = prev.filter((t) => t.id !== id);
+        if (activeTabId === id) {
+          setActiveTabId(next.length > 0 ? next[next.length - 1].id : null);
+        }
+        return next;
+      });
+    } catch (err) {
+      toast.add({ type: "error", title: "Failed to detach tab", description: toErrorMessage(err) });
+    }
+  }
+
+  useAppKeyboardShortcuts({
+    activeTabId,
+    tabs,
+    onCloseActiveTab: handleCloseTab,
+    onNewQuery: () => handleNewQuery(),
+    onNewConnection: () => setDialogOpen(true),
+    onSelectTab: handleSelectTab,
+  });
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="queryon-theme">
       <Toaster>
@@ -190,7 +302,9 @@ function App() {
           queryRefreshToken={queryRefreshToken}
           onSelectConnection={handleSelectConnection}
           onDeleteConnection={handleDeleteConnection}
+          onDisconnect={handleDisconnect}
           onOpenTable={handleOpenTable}
+          onOpenCollection={handleOpenCollection}
           onNewConnection={() => setDialogOpen(true)}
           onNewQuery={handleNewQuery}
           onOpenSavedQuery={handleOpenSavedQuery}
@@ -202,6 +316,8 @@ function App() {
           activeTabId={activeTabId}
           onSelectTab={handleSelectTab}
           onCloseTab={handleCloseTab}
+          onReorderTabs={handleReorderTabs}
+          onDetachTab={handleDetachTab}
           onQueryActivity={handleQueryActivity}
         />
 
@@ -241,6 +357,8 @@ function App() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <UpdateChecker />
       </div>
       </Toaster>
     </ThemeProvider>

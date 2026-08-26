@@ -1,15 +1,18 @@
 import { commands } from "@/src/lib/tauri/bindings";
 import type {
+  CollectionRef,
   ColumnInfo,
   ConnectionInfo,
   ConnectionProfile,
   ConstraintInfo,
   ConstraintKind,
   ColumnEdit,
+  DatabaseRef,
   DdlBatchResult,
   DdlExecutionResult,
   DdlPreview,
   DdlStatement,
+  DocumentPage,
   ExportFormat,
   FilterOperator,
   ForeignKeyAction,
@@ -33,16 +36,19 @@ import type {
 } from "@/src/lib/tauri/bindings";
 
 export type {
+  CollectionRef,
   ColumnInfo,
   ConnectionInfo,
   ConnectionProfile,
   ConstraintInfo,
   ConstraintKind,
   ColumnEdit,
+  DatabaseRef,
   DdlBatchResult,
   DdlExecutionResult,
   DdlPreview,
   DdlStatement,
+  DocumentPage,
   ExportFormat,
   FilterOperator,
   ForeignKeyAction,
@@ -373,4 +379,61 @@ export async function runQueryExport(jobId: string, request: QueryExportRequest)
 
 export async function cancelExport(jobId: string): Promise<void> {
   await commands.exportCancel(jobId);
+}
+
+export async function docConnect(profile: ConnectionProfile): Promise<ConnectionInfo> {
+  return unwrap(await commands.docConnect(profile));
+}
+
+export async function docTestConnection(profile: ConnectionProfile): Promise<ConnectionInfo> {
+  return unwrap(await commands.docTestConnection(profile));
+}
+
+export async function docConnectSaved(connectionId: string): Promise<ConnectionInfo> {
+  return unwrap(await commands.docConnectSaved(connectionId));
+}
+
+export async function docDisconnect(connectionId: string): Promise<void> {
+  await commands.docDisconnect(connectionId);
+}
+
+export async function docListActiveConnections(): Promise<string[]> {
+  return commands.docListActiveConnections();
+}
+
+export async function docDefaultDatabase(connectionId: string): Promise<string | null> {
+  const result = await commands.docDefaultDatabase(connectionId);
+  return result ?? null;
+}
+
+export async function docListDatabases(connectionId: string): Promise<DatabaseRef[]> {
+  return unwrap(await commands.docListDatabases(connectionId));
+}
+
+export async function docListCollections(
+  connectionId: string,
+  database: string
+): Promise<CollectionRef[]> {
+  return unwrap(await commands.docListCollections(connectionId, database));
+}
+
+export async function docListDocuments(
+  connectionId: string,
+  database: string,
+  collection: string,
+  limit: number,
+  skip: number
+): Promise<DocumentPage> {
+  return unwrap(await commands.docListDocuments(connectionId, database, collection, limit, skip));
+}
+
+export async function docGetDocument(
+  connectionId: string,
+  database: string,
+  collection: string,
+  id: string
+): Promise<CellValue | null> {
+  const encoded = await unwrap(await commands.docGetDocument(connectionId, database, collection, id));
+  if (encoded === null) return null;
+  return JSON.parse(encoded) as CellValue;
 }

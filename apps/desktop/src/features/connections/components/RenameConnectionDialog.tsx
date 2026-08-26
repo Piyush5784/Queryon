@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/src/app/components/ui/dialog";
-import { Input } from "@/src/app/components/ui/input";
+} from "@queryon/ui/components/dialog";
+import { Input } from "@queryon/ui/components/input";
 import { renameSavedConnection } from "@/src/features/connections/api";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 

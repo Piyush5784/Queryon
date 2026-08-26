@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ChevronRight,
   Copy,
   Download,
@@ -10,6 +11,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plug,
+  PlugZap,
   Plus,
   Star,
   Table2,
@@ -18,11 +20,22 @@ import {
 } from "lucide-react";
 
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@queryon/ui/components/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/src/app/components/ui/dropdown-menu";
+} from "@queryon/ui/components/dropdown-menu";
 import {
   SidebarMenuAction,
   SidebarMenuButton,
@@ -30,14 +43,17 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-} from "@/src/app/components/ui/sidebar";
+} from "@queryon/ui/components/sidebar";
 import { RenameConnectionDialog } from "@/src/features/connections/components/RenameConnectionDialog";
 import {
   engineOf,
+  isDocumentEngine,
   toDisplayUrl,
   type Engine,
   type SavedConnectionProfile,
 } from "@/src/features/connections/types";
+import { CollectionBrowser } from "@/src/features/documents/components/CollectionBrowser";
+import { docDefaultDatabase } from "@/src/features/documents/api";
 import { MultiTableExportDialog } from "@/src/components/MultiTableExportDialog";
 import { CreateTableDialog } from "@/src/features/schema/components/CreateTableDialog";
 import { DropTableDialog } from "@/src/features/schema/components/DropTableDialog";
@@ -60,8 +76,12 @@ interface ConnectionTreeItemProps {
   isConnected: boolean;
   isConnecting: boolean;
   queryRefreshToken: number;
+  collapseSignal: number;
   onSelect: () => void;
+  onDisconnect: () => void;
+  onDeleteConnection: () => void;
   onOpenTable: (schema: string, table: string) => void;
+  onOpenCollection: (database: string, collection: string) => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (sql: string) => void;
   onNewQuery: () => void;
@@ -74,8 +94,12 @@ export function ConnectionTreeItem({
   isConnected,
   isConnecting,
   queryRefreshToken,
+  collapseSignal,
   onSelect,
+  onDisconnect,
+  onDeleteConnection,
   onOpenTable,
+  onOpenCollection,
   onOpenSavedQuery,
   onOpenHistoryEntry,
   onNewQuery,
@@ -86,14 +110,43 @@ export function ConnectionTreeItem({
   const [error, setError] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [tables, setTables] = useState<TableRef[] | null>(null);
+  const [defaultDatabase, setDefaultDatabase] = useState<string | null>(null);
+
+  const isDocument = isDocumentEngine(engineOf(connection));
 
   useEffect(() => {
     if (isActive) setExpanded(true);
   }, [isActive]);
 
   useEffect(() => {
-    if (!expanded || !isConnected || tables !== null) return;
+    if (!isConnected) {
+      setExpanded(false);
+      setTables(null);
+      setError(null);
+      setDefaultDatabase(null);
+    }
+  }, [isConnected]);
+
+  useEffect(() => {
+    if (collapseSignal > 0) setExpanded(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapseSignal]);
+
+  useEffect(() => {
+    if (!isDocument || !expanded || !isConnected) return;
+    let cancelled = false;
+    docDefaultDatabase(connection.id).then((db) => {
+      if (!cancelled) setDefaultDatabase(db);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDocument, expanded, isConnected, connection.id]);
+
+  useEffect(() => {
+    if (isDocument || !expanded || !isConnected || tables !== null) return;
 
     let cancelled = false;
     setLoading(true);
@@ -113,7 +166,7 @@ export function ConnectionTreeItem({
     return () => {
       cancelled = true;
     };
-  }, [expanded, isConnected, tables, connection.id]);
+  }, [isDocument, expanded, isConnected, tables, connection.id]);
 
   function refetchTables() {
     listTables(connection.id)
@@ -167,13 +220,52 @@ export function ConnectionTreeItem({
             Copy Connection String
           </DropdownMenuItem>
           {isConnected && (
-            <DropdownMenuItem onClick={() => setExportOpen(true)}>
-              <Download className="size-3.5" />
-              Export Tables…
-            </DropdownMenuItem>
+            <>
+              {!isDocument && (
+                <DropdownMenuItem onClick={() => setExportOpen(true)}>
+                  <Download className="size-3.5" />
+                  Export Tables…
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem variant="destructive" onClick={onDisconnect}>
+                <PlugZap className="size-3.5" />
+                Disconnect
+              </DropdownMenuItem>
+            </>
           )}
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+            <Trash2 className="size-3.5" />
+            Delete Connection
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-destructive/10 text-destructive">
+              <AlertTriangle />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Delete "{connection.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the saved connection and its password from the system keychain. This
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setDeleteOpen(false);
+                onDeleteConnection();
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MultiTableExportDialog
         connectionId={connection.id}
@@ -199,7 +291,15 @@ export function ConnectionTreeItem({
             </SidebarMenuSubItem>
           )}
 
-          {loading && (
+          {isDocument && isConnected && (
+            <CollectionBrowser
+              connectionId={connection.id}
+              defaultDatabase={defaultDatabase}
+              onOpenCollection={onOpenCollection}
+            />
+          )}
+
+          {!isDocument && loading && (
             <SidebarMenuSubItem>
               <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" />
@@ -208,13 +308,13 @@ export function ConnectionTreeItem({
             </SidebarMenuSubItem>
           )}
 
-          {error && (
+          {!isDocument && error && (
             <SidebarMenuSubItem>
               <p className="px-2 py-1 text-xs text-destructive">{error}</p>
             </SidebarMenuSubItem>
           )}
 
-          {!loading && !error && isConnected && tables?.length === 0 && (
+          {!isDocument && !loading && !error && isConnected && tables?.length === 0 && (
             <SidebarMenuSubItem>
               <p className="px-2 py-1 text-xs text-muted-foreground">
                 No tables found
@@ -222,31 +322,36 @@ export function ConnectionTreeItem({
             </SidebarMenuSubItem>
           )}
 
-          {Object.entries(schemas).map(([schemaName, schemaTables]) => (
-            <SchemaGroup
-              key={schemaName}
-              connectionId={connection.id}
-              engine={engineOf(connection)}
-              schema={schemaName}
-              tables={schemaTables}
-              onOpenTable={onOpenTable}
-              onTableChanged={refetchTables}
-            />
-          ))}
+          {!isDocument &&
+            Object.entries(schemas).map(([schemaName, schemaTables]) => (
+              <SchemaGroup
+                key={schemaName}
+                connectionId={connection.id}
+                engine={engineOf(connection)}
+                schema={schemaName}
+                tables={schemaTables}
+                onOpenTable={onOpenTable}
+                onTableChanged={refetchTables}
+              />
+            ))}
 
-          <SavedQueriesGroup
-            connectionId={connection.id}
-            refreshToken={queryRefreshToken}
-            onOpenQuery={onOpenSavedQuery}
-            onNewQuery={onNewQuery}
-          />
+          {!isDocument && (
+            <>
+              <SavedQueriesGroup
+                connectionId={connection.id}
+                refreshToken={queryRefreshToken}
+                onOpenQuery={onOpenSavedQuery}
+                onNewQuery={onNewQuery}
+              />
 
-          <QueryHistoryGroup
-            connectionId={connection.id}
-            refreshToken={queryRefreshToken}
-            onOpenQuery={onOpenHistoryEntry}
-            onNewQuery={onNewQuery}
-          />
+              <QueryHistoryGroup
+                connectionId={connection.id}
+                refreshToken={queryRefreshToken}
+                onOpenQuery={onOpenHistoryEntry}
+                onNewQuery={onNewQuery}
+              />
+            </>
+          )}
         </SidebarMenuSub>
       )}
     </SidebarMenuItem>

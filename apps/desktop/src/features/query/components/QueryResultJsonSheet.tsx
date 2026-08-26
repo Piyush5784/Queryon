@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/src/app/components/ui/sheet";
+} from "@queryon/ui/components/sheet";
 import { JsonViewer } from "@/src/features/tables/components/JsonViewer";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
 

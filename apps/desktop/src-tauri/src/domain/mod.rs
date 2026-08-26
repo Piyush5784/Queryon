@@ -1,4 +1,5 @@
 pub mod connection;
+pub mod document;
 pub mod driver;
 pub mod export;
 pub mod query;

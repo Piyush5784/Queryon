@@ -1,4 +1,4 @@
-import { Database, Zap } from "lucide-react";
+import { Database, Leaf, Zap } from "lucide-react";
 
 import { cn } from "@/src/lib/utils";
 import type { Engine } from "@/src/features/connections/types";
@@ -16,6 +16,8 @@ export const ENGINE_OPTIONS: { value: Engine; label: string }[] = [
   { value: "star-rocks", label: "StarRocks" },
   { value: "click-house", label: "ClickHouse" },
   { value: "duck-db", label: "DuckDB" },
+  { value: "lib-sql", label: "LibSQL" },
+  { value: "mongo-db", label: "MongoDB" },
 ];
 
 const ENGINE_COLORS: Record<Engine, string> = {
@@ -31,6 +33,8 @@ const ENGINE_COLORS: Record<Engine, string> = {
   "star-rocks": "text-amber-600",
   "click-house": "text-yellow-500",
   "duck-db": "text-yellow-600",
+  "lib-sql": "text-indigo-500",
+  "mongo-db": "text-green-600",
 };
 
 interface EngineIconProps {
@@ -39,6 +43,6 @@ interface EngineIconProps {
 }
 
 export function EngineIcon({ engine, className }: EngineIconProps) {
-  const Icon = engine === "neon" ? Zap : Database;
+  const Icon = engine === "neon" ? Zap : engine === "mongo-db" ? Leaf : Database;
   return <Icon className={cn(ENGINE_COLORS[engine], className)} />;
 }

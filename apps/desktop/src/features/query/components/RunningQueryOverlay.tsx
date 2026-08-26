@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Square } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { TooltipButton } from "@/src/components/TooltipButton";
 
 interface RunningQueryOverlayProps {
   cancelling: boolean;
@@ -31,10 +31,18 @@ export function RunningQueryOverlay({ cancelling, onCancel }: RunningQueryOverla
         <p className="text-sm font-medium">Running query…</p>
         <p className="font-mono text-xs text-muted-foreground">{formatElapsed(elapsedMs)}</p>
       </div>
-      <Button size="xs" variant="outline" className="gap-1.5" onClick={onCancel} disabled={cancelling}>
+      <TooltipButton
+        size="xs"
+        variant="outline"
+        className="gap-1.5"
+        onClick={onCancel}
+        disabled={cancelling}
+        tooltip="Cancel"
+        shortcut={["Esc"]}
+      >
         {cancelling ? <Loader2 className="size-3.5 animate-spin" /> : <Square className="size-3" />}
         {cancelling ? "Cancelling…" : "Cancel"}
-      </Button>
+      </TooltipButton>
     </div>
   );
 }

@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { toast } from "@/src/app/components/ui/toast";
+import { Button } from "@queryon/ui/components/button";
+import { toast } from "@queryon/ui/components/toast";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/src/app/components/ui/dialog";
+} from "@queryon/ui/components/dialog";
 import {
   executeDdl,
   renderDdl,

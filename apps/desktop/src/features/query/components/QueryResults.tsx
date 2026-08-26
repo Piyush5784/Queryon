@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2 } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
+import { ExportButton } from "@/src/components/ExportButton";
 import { DataGrid } from "@/src/features/tables/components/DataGrid";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
 import { fetchQueryResultPage, type QueryResult } from "@/src/features/query/api";
@@ -13,15 +14,17 @@ export const QUERY_RESULT_PAGE_SIZE = 1000;
 interface QueryResultsProps {
   connectionId: string;
   tabId: string;
+  sql: string;
   result: QueryResult;
 }
 
-export function QueryResults({ connectionId, tabId, result }: QueryResultsProps) {
+export function QueryResults({ connectionId, tabId, sql, result }: QueryResultsProps) {
   const [jsonSheet, setJsonSheet] = useState<{ columnName: string; value: JsonValue } | null>(null);
   const [page, setPage] = useState(0);
   const [pageRows, setPageRows] = useState(result.kind === "rows" ? result.rows : []);
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setPage(0);
@@ -52,6 +55,21 @@ export function QueryResults({ connectionId, tabId, result }: QueryResultsProps)
   const totalRowCount = result.totalRowCount;
   const paginated = totalRowCount !== null;
   const totalPages = paginated ? Math.max(1, Math.ceil(totalRowCount / QUERY_RESULT_PAGE_SIZE)) : 1;
+
+  async function handleCopyPage() {
+    if (result.kind !== "rows") return;
+    const columns = result.columns;
+    const objects = pageRows.map((row) => {
+      const obj: Record<string, unknown> = {};
+      columns.forEach((col, i) => {
+        obj[col] = row[i] ?? null;
+      });
+      return obj;
+    });
+    await navigator.clipboard.writeText(JSON.stringify(objects, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  }
 
   async function goToPage(next: number) {
     if (!paginated || next < 0 || next >= totalPages || next === page || pageLoading) return;
@@ -97,8 +115,8 @@ export function QueryResults({ connectionId, tabId, result }: QueryResultsProps)
         )}
       </div>
 
-      {paginated && totalPages > 1 && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t px-3 py-1.5">
+      {paginated && (
+        <div className="relative flex shrink-0 items-center justify-between gap-3 border-t px-3 py-1.5">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -108,8 +126,7 @@ export function QueryResults({ connectionId, tabId, result }: QueryResultsProps)
             >
               <ChevronLeft className="size-3.5" />
             </Button>
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {pageLoading && <Loader2 className="size-3 animate-spin" />}
+            <span className="text-xs text-muted-foreground">
               Page {page + 1} of {totalPages.toLocaleString()}
             </span>
             <Button
@@ -120,10 +137,66 @@ export function QueryResults({ connectionId, tabId, result }: QueryResultsProps)
             >
               <ChevronRight className="size-3.5" />
             </Button>
+            <span className="pl-1 text-xs text-muted-foreground">
+              {QUERY_RESULT_PAGE_SIZE.toLocaleString()} rows / page
+            </span>
           </div>
-          <span className="text-xs text-muted-foreground">
-            {totalRowCount.toLocaleString()} row{totalRowCount === 1 ? "" : "s"}
-          </span>
+
+          <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 text-xs text-muted-foreground">
+            {pageLoading && <Loader2 className="size-3 animate-spin" />}
+            <span>{totalRowCount.toLocaleString()} rows</span>
+            <span className="text-muted-foreground/60">·</span>
+            <span>{result.durationMs}ms</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="xs"
+              className="gap-1.5"
+              onClick={handleCopyPage}
+              disabled={pageLoading}
+            >
+              <Copy className="size-3.5" />
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            <ExportButton
+              target={{
+                kind: "query",
+                connectionId,
+                tabId,
+                sql,
+                page: {
+                  columns: result.columns,
+                  rows: pageRows.map((row) => row.map((cell) => JSON.stringify(cell))),
+                },
+              }}
+              fileBaseName="query_result"
+              disabled={pageLoading}
+            />
+          </div>
+        </div>
+      )}
+
+      {!paginated && (
+        <div className="flex shrink-0 items-center justify-end gap-1.5 border-t px-3 py-1.5">
+          <Button variant="outline" size="xs" className="gap-1.5" onClick={handleCopyPage}>
+            <Copy className="size-3.5" />
+            {copied ? "Copied" : "Copy"}
+          </Button>
+          <ExportButton
+            target={{
+              kind: "query",
+              connectionId,
+              tabId,
+              sql,
+              page: {
+                columns: result.columns,
+                rows: pageRows.map((row) => row.map((cell) => JSON.stringify(cell))),
+              },
+            }}
+            fileBaseName="query_result"
+          />
         </div>
       )}
 

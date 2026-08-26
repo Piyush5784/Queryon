@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Checkbox } from "@/src/app/components/ui/checkbox";
+import { Button } from "@queryon/ui/components/button";
+import { Checkbox } from "@queryon/ui/components/checkbox";
 import type { ExportTarget } from "@/src/components/exportTypes";
 import {
   Dialog,
@@ -12,22 +12,22 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/src/app/components/ui/dialog";
+} from "@queryon/ui/components/dialog";
 import {
   Field,
   FieldContent,
   FieldGroup,
   FieldLabel,
-} from "@/src/app/components/ui/field";
-import { Input } from "@/src/app/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/src/app/components/ui/radio-group";
+} from "@queryon/ui/components/field";
+import { Input } from "@queryon/ui/components/input";
+import { RadioGroup, RadioGroupItem } from "@queryon/ui/components/radio-group";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/app/components/ui/select";
+} from "@queryon/ui/components/select";
 import { EXPORT_FORMATS, suggestedFileName, type ExportEvent, type ExportFormat } from "@/src/lib/export";
 import {
   cancelExport,

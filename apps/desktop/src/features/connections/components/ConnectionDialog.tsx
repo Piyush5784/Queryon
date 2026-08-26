@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { ArrowLeft, CheckCircle2, FolderOpen, Link2, Loader2, XCircle } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
-import { Checkbox } from "@/src/app/components/ui/checkbox";
+import { Button } from "@queryon/ui/components/button";
+import { Checkbox } from "@queryon/ui/components/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/src/app/components/ui/dialog";
+} from "@queryon/ui/components/dialog";
 import {
   Field,
   FieldContent,
@@ -18,20 +18,23 @@ import {
   FieldGroup,
   FieldLabel,
   FieldSeparator,
-} from "@/src/app/components/ui/field";
-import { Input } from "@/src/app/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/src/app/components/ui/radio-group";
+} from "@queryon/ui/components/field";
+import { Input } from "@queryon/ui/components/input";
+import { RadioGroup, RadioGroupItem } from "@queryon/ui/components/radio-group";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/app/components/ui/select";
+} from "@queryon/ui/components/select";
 import { connect, pickDuckdbFile, pickSshKeyFile, pickSqliteFile, saveConnection, testConnection } from "@/src/features/connections/api";
+import { docConnect, docTestConnection } from "@/src/features/documents/api";
 import {
   createEmptyConnectionDraft,
+  isDocumentEngine,
   isFileBasedEngine,
+  isRemoteUrlEngine,
   parseConnectionUrl,
   urlSchemeFor,
   type ConnectionProfile,
@@ -77,6 +80,8 @@ const DEV_URLS: Record<Engine, string> = {
   "star-rocks": "mysql://root:devpass@localhost:39030/devdb",
   "click-house": "http://devuser:devpass@localhost:48123/devdb",
   "duck-db": "",
+  "lib-sql": "",
+  "mongo-db": "",
 };
 
 const FIELD_PLACEHOLDERS: Record<Engine, { database: string; user: string }> = {
@@ -92,6 +97,8 @@ const FIELD_PLACEHOLDERS: Record<Engine, { database: string; user: string }> = {
   "sql-server": { database: "master", user: "sa" },
   "click-house": { database: "default", user: "default" },
   "duck-db": { database: "postgres", user: "postgres" },
+  "lib-sql": { database: "postgres", user: "postgres" },
+  "mongo-db": { database: "myDatabase", user: "" },
 };
 
 export function ConnectionDialog({
@@ -202,7 +209,9 @@ export function ConnectionDialog({
   async function handleTest() {
     setStatus({ kind: "testing" });
     try {
-      const info = await testConnection(buildProfile());
+      const info = isDocumentEngine(engine)
+        ? await docTestConnection(buildProfile())
+        : await testConnection(buildProfile());
       setStatus({ kind: "test-success", serverVersion: info.serverVersion });
     } catch (err) {
       setStatus({
@@ -217,7 +226,11 @@ export function ConnectionDialog({
     setStatus({ kind: "connecting" });
     const profile = buildProfile();
     try {
-      await connect(profile);
+      if (isDocumentEngine(engine)) {
+        await docConnect(profile);
+      } else {
+        await connect(profile);
+      }
       if (saveForNextTime) {
         await saveConnection(profile);
       }
@@ -286,9 +299,13 @@ export function ConnectionDialog({
               <DialogDescription>
                 {isFileBasedEngine(engine)
                   ? `Choose a ${engineLabel} database file on this machine.`
-                  : engine === "neon"
-                    ? "Paste your Neon connection string to auto-fill the fields, or enter them manually."
-                    : `Connect to a ${engineLabel} database. Paste a connection URL to auto-fill the fields, or enter them manually.`}
+                  : isDocumentEngine(engine)
+                    ? "Paste your MongoDB connection string — mongodb:// or mongodb+srv://."
+                    : isRemoteUrlEngine(engine)
+                    ? "Enter the sqld/Turso server URL, and an auth token if the server requires one."
+                    : engine === "neon"
+                      ? "Paste your Neon connection string to auto-fill the fields, or enter them manually."
+                      : `Connect to a ${engineLabel} database. Paste a connection URL to auto-fill the fields, or enter them manually.`}
               </DialogDescription>
             </DialogHeader>
 
@@ -331,6 +348,101 @@ export function ConnectionDialog({
                           placeholder="My Database"
                           value={draft.name}
                           onChange={(e) => update("name", e.target.value)}
+                          autoComplete="off"
+                        />
+                      </FieldContent>
+                    </Field>
+                  </>
+                ) : isDocumentEngine(engine) ? (
+                  <>
+                    <Field>
+                      <FieldLabel htmlFor="conn-name">Name</FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-name"
+                          placeholder="My Mongo Cluster"
+                          value={draft.name}
+                          onChange={(e) => update("name", e.target.value)}
+                          autoComplete="off"
+                        />
+                      </FieldContent>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="conn-mongo-url">
+                        <Link2 className="size-3.5" />
+                        Connection String
+                      </FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-mongo-url"
+                          placeholder="mongodb+srv://user:password@cluster.mongodb.net/myDatabase"
+                          value={draft.host}
+                          onChange={(e) => update("host", e.target.value)}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                        <FieldDescription>
+                          Include the database name in the path if you want a default database.
+                        </FieldDescription>
+                      </FieldContent>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="conn-mongo-database">Default Database</FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-mongo-database"
+                          placeholder={FIELD_PLACEHOLDERS[engine].database}
+                          value={draft.database}
+                          onChange={(e) => update("database", e.target.value)}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </FieldContent>
+                    </Field>
+                  </>
+                ) : isRemoteUrlEngine(engine) ? (
+                  <>
+                    <Field>
+                      <FieldLabel htmlFor="conn-name">Name</FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-name"
+                          placeholder="My Database"
+                          value={draft.name}
+                          onChange={(e) => update("name", e.target.value)}
+                          autoComplete="off"
+                        />
+                      </FieldContent>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="conn-libsql-url">
+                        <Link2 className="size-3.5" />
+                        Server URL
+                      </FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-libsql-url"
+                          placeholder="http://localhost:58082 or libsql://your-db.turso.io"
+                          value={draft.host}
+                          onChange={(e) => update("host", e.target.value)}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </FieldContent>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="conn-libsql-token">Auth Token</FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="conn-libsql-token"
+                          type="password"
+                          placeholder="Optional — required for Turso, not for a local sqld container"
+                          value={draft.password}
+                          onChange={(e) => update("password", e.target.value)}
                           autoComplete="off"
                         />
                       </FieldContent>
@@ -489,7 +601,7 @@ export function ConnectionDialog({
                     </FieldDescription>
                   </FieldContent>
                 </Field>
-                {!isFileBasedEngine(engine) && (
+                {!isFileBasedEngine(engine) && !isRemoteUrlEngine(engine) && (
                   <Field orientation="horizontal">
                     <Checkbox
                       id="conn-ssh-tunnel"

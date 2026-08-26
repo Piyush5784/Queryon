@@ -6,9 +6,10 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/src/app/components/ui/empty";
+} from "@queryon/ui/components/empty";
 import type { AppTab } from "@/src/app/tabs";
 import type { SavedConnectionProfile } from "@/src/features/connections/types";
+import { CollectionView } from "@/src/features/documents/components/CollectionView";
 import { QueryTabView } from "@/src/features/query/components/QueryTabView";
 import { TabBar } from "@/src/features/tables/components/TableToolbar/TabBar";
 import { TableView } from "@/src/features/tables/components/TableView";
@@ -27,6 +28,8 @@ interface WorkspaceProps {
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
+  onReorderTabs: (fromId: string, toId: string) => void;
+  onDetachTab: (id: string) => void;
   onNewConnection: () => void;
   onQueryActivity: () => void;
 }
@@ -44,6 +47,8 @@ export function Workspace({
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onReorderTabs,
+  onDetachTab,
   onNewConnection,
   onQueryActivity,
 }: WorkspaceProps) {
@@ -71,12 +76,16 @@ export function Workspace({
         activeTabId={activeTabId}
         onSelectTab={onSelectTab}
         onCloseTab={onCloseTab}
+        onReorderTabs={onReorderTabs}
+        onDetachTab={onDetachTab}
       />
 
       <div className="min-h-0 flex-1">
         {activeTab ? (
           activeTab.type === "table" ? (
             <TableView key={activeTab.id} tab={activeTab} />
+          ) : activeTab.type === "collection" ? (
+            <CollectionView key={activeTab.id} tab={activeTab} />
           ) : (
             <QueryTabView key={activeTab.id} tab={activeTab} onQueryActivity={onQueryActivity} />
           )

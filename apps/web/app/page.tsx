@@ -1,19 +1,33 @@
-import { Button } from "@queryon/ui/components/button"
+import { EngineMarquee } from "../components/landing/EngineMarquee"
+import { FeatureDeepDives } from "../components/landing/FeatureDeepDives"
+import { FeatureGrid } from "../components/landing/FeatureGrid"
+import { Hero } from "../components/landing/Hero"
+import { MoreFeaturesCarousel } from "../components/landing/MoreFeaturesCarousel"
+import { Navbar } from "../components/landing/Navbar"
+import { ReadyToGetStarted } from "../components/landing/ReadyToGetStarted"
+import { SiteFooter } from "../components/landing/SiteFooter"
+import { TextReveal } from "../components/landing/TextReveal"
 
-export default function Page() {
+export default function LandingPage() {
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">Project ready!</h1>
-          <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
+    <div className="flex min-h-svh flex-col">
+      <Navbar />
+      <main className="flex-1">
+        <Hero />
+        <EngineMarquee />
+
+        <div className="space-y-20 sm:space-y-[120px] lg:space-y-[180px]">
+          <FeatureDeepDives />
+          <MoreFeaturesCarousel />
+          <FeatureGrid />
+          <TextReveal>
+            Queryon isn&apos;t a smaller DBeaver or a rebranded pgAdmin. It&apos;s a client
+            written for people who spend their whole day inside a database.
+          </TextReveal>
+          <ReadyToGetStarted />
         </div>
-        <div className="text-muted-foreground font-mono text-xs">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
-      </div>
+      </main>
+      <SiteFooter />
     </div>
   )
 }

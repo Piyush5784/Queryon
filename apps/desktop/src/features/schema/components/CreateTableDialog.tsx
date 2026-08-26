@@ -1,4 +1,4 @@
-import { Dialog, DialogContent } from "@/src/app/components/ui/dialog";
+import { Dialog, DialogContent } from "@queryon/ui/components/dialog";
 import { NewTableCreateView } from "@/src/features/schema/components/NewTableCreateView";
 import type { Engine } from "@/src/features/connections/types";
 

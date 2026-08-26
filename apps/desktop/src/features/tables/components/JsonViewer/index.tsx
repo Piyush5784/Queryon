@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Braces, Code2 } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
 import { JsonNode } from "@/src/features/tables/components/JsonViewer/JsonNode";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
 

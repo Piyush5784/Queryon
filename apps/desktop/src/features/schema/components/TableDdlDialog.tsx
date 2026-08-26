@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { Copy, Loader2 } from "lucide-react";
 
-import { Button } from "@/src/app/components/ui/button";
+import { Button } from "@queryon/ui/components/button";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/src/app/components/ui/dialog";
+} from "@queryon/ui/components/dialog";
 import { getTableDdl } from "@/src/features/schema/api";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 

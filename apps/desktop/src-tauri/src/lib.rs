@@ -4,7 +4,7 @@ pub mod error;
 pub mod infrastructure;
 pub mod state;
 
-use state::{ConnectionRegistry, ExportJobRegistry, QueryResultCache};
+use state::{ConnectionRegistry, DocumentConnectionRegistry, ExportJobRegistry, QueryResultCache};
 use tauri_specta::{collect_commands, Builder};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -56,6 +56,16 @@ pub fn run() {
         commands::export::export_run_rows,
         commands::export::export_run_query,
         commands::export::export_cancel,
+        commands::document::doc_connect,
+        commands::document::doc_test_connection,
+        commands::document::doc_connect_saved,
+        commands::document::doc_disconnect,
+        commands::document::doc_list_active_connections,
+        commands::document::doc_default_database,
+        commands::document::doc_list_databases,
+        commands::document::doc_list_collections,
+        commands::document::doc_list_documents,
+        commands::document::doc_get_document,
     ]);
 
     #[cfg(debug_assertions)]
@@ -70,7 +80,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ConnectionRegistry::default())
+        .manage(DocumentConnectionRegistry::default())
         .manage(ExportJobRegistry::default())
         .manage(QueryResultCache::default())
         .invoke_handler(builder.invoke_handler())
