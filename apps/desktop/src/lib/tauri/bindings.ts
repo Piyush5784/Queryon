@@ -77,10 +77,25 @@ export const commands = {
 	 */
 	exportRunQuery: (jobId: string, request: QueryExportRequest) => typedError<null, AppError>(__TAURI_INVOKE("export_run_query", { jobId, request })),
 	exportCancel: (jobId: string) => __TAURI_INVOKE<void>("export_cancel", { jobId }),
+	docConnect: (profile: ConnectionProfile) => typedError<ConnectionInfo, AppError>(__TAURI_INVOKE("doc_connect", { profile })),
+	docTestConnection: (profile: ConnectionProfile) => typedError<ConnectionInfo, AppError>(__TAURI_INVOKE("doc_test_connection", { profile })),
+	docConnectSaved: (connectionId: string) => typedError<ConnectionInfo, AppError>(__TAURI_INVOKE("doc_connect_saved", { connectionId })),
+	docDisconnect: (connectionId: string) => __TAURI_INVOKE<void>("doc_disconnect", { connectionId }),
+	docListActiveConnections: () => __TAURI_INVOKE<string[]>("doc_list_active_connections"),
+	docDefaultDatabase: (connectionId: string) => __TAURI_INVOKE<string | null>("doc_default_database", { connectionId }),
+	docListDatabases: (connectionId: string) => typedError<DatabaseRef[], AppError>(__TAURI_INVOKE("doc_list_databases", { connectionId })),
+	docListCollections: (connectionId: string, database: string) => typedError<CollectionRef[], AppError>(__TAURI_INVOKE("doc_list_collections", { connectionId, database })),
+	docListDocuments: (connectionId: string, database: string, collection: string, limit: number, skip: number) => typedError<DocumentPage, AppError>(__TAURI_INVOKE("doc_list_documents", { connectionId, database, collection, limit, skip })),
+	docGetDocument: (connectionId: string, database: string, collection: string, id: string) => typedError<string | null, AppError>(__TAURI_INVOKE("doc_get_document", { connectionId, database, collection, id })),
 };
 
 /* Types */
 export type AppError = string;
+
+export type CollectionRef = {
+	name: string,
+	estimatedCount: number | null,
+};
 
 export type ColumnEdit = {
 	currentName: string,
@@ -128,6 +143,10 @@ export type ConstraintInfo = {
 
 export type ConstraintKind = "primary-key" | "foreign-key" | "unique" | "check";
 
+export type DatabaseRef = {
+	name: string,
+};
+
 export type DdlBatchResult = {
 	results: DdlExecutionResult[],
 	rolledBack: boolean,
@@ -145,7 +164,18 @@ export type DdlPreview = {
 
 export type DdlStatement = { op: "createTable"; table: string; columns: NewColumn[] } | { op: "renameTable"; table: string; newName: string } | { op: "dropTable"; table: string } | { op: "addColumn"; table: string; column: NewColumn } | { op: "dropColumn"; table: string; column: string } | { op: "alterColumn"; table: string; edit: ColumnEdit } | { op: "addIndex"; table: string; index: NewIndex } | { op: "dropIndex"; table: string; index: string } | { op: "addConstraint"; table: string; constraint: NewConstraint } | { op: "dropConstraint"; table: string; constraint: string };
 
-export type Engine = "postgres" | "neon" | "cockroach-db" | "greengage-db" | "my-sql" | "maria-db" | "ti-db" | "sqlite" | "sql-server" | "star-rocks" | "click-house" | "duck-db";
+export type DocumentPage = {
+	documents: DocumentSummary[],
+	hasMore: boolean,
+	durationMs: number,
+};
+
+export type DocumentSummary = {
+	id: string,
+	preview: string,
+};
+
+export type Engine = "postgres" | "neon" | "cockroach-db" | "greengage-db" | "my-sql" | "maria-db" | "ti-db" | "sqlite" | "sql-server" | "star-rocks" | "click-house" | "duck-db" | "lib-sql" | "trino" | "mongo-db";
 
 export type ExportFormat = "csv" | "json" | "sql";
 

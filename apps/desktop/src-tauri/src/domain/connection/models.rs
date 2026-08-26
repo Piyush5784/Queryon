@@ -25,6 +25,9 @@ pub enum Engine {
     StarRocks,
     ClickHouse,
     DuckDb,
+    LibSql,
+    Trino,
+    MongoDb,
 }
 
 fn default_read_only() -> bool {

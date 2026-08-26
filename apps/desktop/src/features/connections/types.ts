@@ -12,7 +12,9 @@ export type Engine =
   | "sql-server"
   | "star-rocks"
   | "click-house"
-  | "duck-db";
+  | "duck-db"
+  | "lib-sql"
+  | "mongo-db";
 
 export type SshAuth =
   | { kind: "password"; password: string }
@@ -85,6 +87,14 @@ export function isFileBasedEngine(engine: Engine): boolean {
   return engine === "sqlite" || engine === "duck-db";
 }
 
+export function isRemoteUrlEngine(engine: Engine): boolean {
+  return engine === "lib-sql" || engine === "mongo-db";
+}
+
+export function isDocumentEngine(engine: Engine): boolean {
+  return engine === "mongo-db";
+}
+
 export const DEFAULT_PG_PORT = 5432;
 export const DEFAULT_MYSQL_PORT = 3306;
 export const DEFAULT_COCKROACHDB_PORT = 26257;
@@ -114,7 +124,7 @@ export function createEmptyConnectionDraft(engine: Engine): Omit<ConnectionProfi
   return {
     name: "",
     engine,
-    host: isFileBasedEngine(engine) ? "" : "localhost",
+    host: isFileBasedEngine(engine) ? "" : isRemoteUrlEngine(engine) ? "http://localhost:58082" : "localhost",
     port: defaultPortFor(engine),
     database: "",
     user: "",
@@ -188,6 +198,9 @@ export function toDisplayUrl(profile: {
   const engine = engineOf(profile);
   if (isFileBasedEngine(engine)) {
     return profile.database || "(no file selected)";
+  }
+  if (isRemoteUrlEngine(engine)) {
+    return profile.host || "(no server URL set)";
   }
   const auth = profile.user ? `${profile.user}@` : "";
   const db = profile.database ? `/${profile.database}` : "";

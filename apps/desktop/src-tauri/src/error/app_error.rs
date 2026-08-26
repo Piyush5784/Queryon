@@ -119,6 +119,67 @@ pub fn describe_sqlite_error(err: &sqlx::Error) -> String {
     }
 }
 
+pub fn describe_libsql_error(err: &libsql::Error) -> String {
+    clean_libsql_error(&err.to_string())
+}
+
+pub fn clean_libsql_error(raw: &str) -> String {
+    if raw.contains("UNIQUE constraint failed") {
+        "A row with this value already exists — it must be unique.".to_string()
+    } else if raw.contains("FOREIGN KEY constraint failed") {
+        "This value doesn't match any row in the referenced table — check the related record exists."
+            .to_string()
+    } else if raw.contains("NOT NULL constraint failed") {
+        "Column cannot be empty — it does not allow NULL.".to_string()
+    } else if raw.contains("CHECK constraint failed") {
+        "This value violates a check constraint.".to_string()
+    } else if raw.contains("Connection refused") || raw.contains("error sending request") {
+        "Connection refused — check the server URL and that sqld/Turso is reachable.".to_string()
+    } else if raw.contains("401") || raw.to_lowercase().contains("unauthorized") {
+        "Authentication failed — check the auth token.".to_string()
+    } else if raw.contains("timed out") {
+        "Connection timed out — check the server URL and your network/firewall.".to_string()
+    } else {
+        raw.to_string()
+    }
+}
+
+pub fn describe_mongodb_error(err: &mongodb::error::Error) -> String {
+    clean_mongodb_error(&err.to_string())
+}
+
+pub fn clean_mongodb_error(raw: &str) -> String {
+    if raw.contains("Authentication failed") || raw.contains("bad auth") {
+        "Authentication failed — check your username and password.".to_string()
+    } else if raw.contains("ServerSelectionTimeout") || raw.contains("server selection timeout") {
+        "Could not reach the MongoDB server — check the connection string and your network/firewall."
+            .to_string()
+    } else if raw.contains("Connection refused") {
+        "Connection refused — check the host and that the server is running.".to_string()
+    } else if raw.contains("timed out") {
+        "Connection timed out — check the connection string and your network/firewall.".to_string()
+    } else if raw.contains("InvalidUri") || raw.contains("invalid uri") {
+        "Invalid MongoDB connection string.".to_string()
+    } else {
+        raw.to_string()
+    }
+}
+
+pub fn describe_trino_error(err: &trino_rust_client::error::Error) -> String {
+    use trino_rust_client::error::Error as TrinoError;
+    match err {
+        TrinoError::Query(query_error) => query_error.message.clone(),
+        TrinoError::Forbidden { message } => format!("Permission denied: {message}"),
+        TrinoError::HttpError(_) | TrinoError::HttpNotOk(_, _) => {
+            "Connection refused — check the host and port and that Trino is reachable.".to_string()
+        }
+        TrinoError::Transaction(message) => message.clone(),
+        TrinoError::Protocol(message) => message.clone(),
+        TrinoError::Decode(message) => format!("Failed to read the server's response: {message}"),
+        other => other.to_string(),
+    }
+}
+
 pub fn clean_sqlite_error(raw: &str) -> String {
     if raw.contains("unable to open database file") {
         "Could not open the database file — check the path exists and is readable.".to_string()

@@ -9,6 +9,7 @@ import {
 } from "@queryon/ui/components/empty";
 import type { AppTab } from "@/src/app/tabs";
 import type { SavedConnectionProfile } from "@/src/features/connections/types";
+import { CollectionView } from "@/src/features/documents/components/CollectionView";
 import { QueryTabView } from "@/src/features/query/components/QueryTabView";
 import { TabBar } from "@/src/features/tables/components/TableToolbar/TabBar";
 import { TableView } from "@/src/features/tables/components/TableView";
@@ -83,6 +84,8 @@ export function Workspace({
         {activeTab ? (
           activeTab.type === "table" ? (
             <TableView key={activeTab.id} tab={activeTab} />
+          ) : activeTab.type === "collection" ? (
+            <CollectionView key={activeTab.id} tab={activeTab} />
           ) : (
             <QueryTabView key={activeTab.id} tab={activeTab} onQueryActivity={onQueryActivity} />
           )

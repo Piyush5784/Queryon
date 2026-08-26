@@ -3,16 +3,20 @@ use std::time::Instant;
 
 use tauri::{AppHandle, Wry};
 
+use crate::domain::document::DocumentDriver;
 use crate::domain::driver::DatabaseDriver;
 use crate::error::AppError;
 use crate::infrastructure::clickhouse::driver::ClickHouseDriver;
 use crate::infrastructure::duckdb::driver::DuckDbDriver;
+use crate::infrastructure::libsql::driver::LibSqlDriver;
+use crate::infrastructure::mongodb::driver::MongoDbDriver;
 use crate::infrastructure::mssql::driver::MssqlDriver;
 use crate::infrastructure::mysql::driver::MySqlDriver;
 use crate::infrastructure::postgres::driver::PostgresDriver;
 use crate::infrastructure::sqlite::driver::SqliteDriver;
 use crate::infrastructure::ssh::{self, SshTunnel};
 use crate::infrastructure::storage::{credential_vault, profile_store};
+use crate::infrastructure::trino::driver::TrinoDriver;
 
 use super::models::{ConnectionProfile, Engine, SavedConnectionProfile};
 
@@ -65,6 +69,19 @@ pub async fn open_pool_and_verify(
             let handle = crate::infrastructure::duckdb::pool::build_connection(&dial_profile)?;
             Arc::new(DuckDbDriver::new(handle))
         }
+        Engine::LibSql => {
+            let conn = crate::infrastructure::libsql::pool::build_connection(&dial_profile).await?;
+            Arc::new(LibSqlDriver::new(conn))
+        }
+        Engine::Trino => {
+            let client = crate::infrastructure::trino::pool::build_client(&dial_profile)?;
+            Arc::new(TrinoDriver::new(client))
+        }
+        Engine::MongoDb => {
+            return Err(AppError::new(
+                "MongoDB is a document database — use the document connection flow instead of the relational one.",
+            ));
+        }
     };
     log::info!("db_connect: build_pool took {:?}", build_start.elapsed());
 
@@ -73,6 +90,20 @@ pub async fn open_pool_and_verify(
     log::info!("db_connect: fetch_server_version took {:?}", verify_start.elapsed());
 
     Ok((driver, server_version, tunnel))
+}
+
+pub async fn open_document_connection(
+    profile: &ConnectionProfile,
+) -> Result<(Arc<dyn DocumentDriver>, String, String), AppError> {
+    if !matches!(profile.engine, Engine::MongoDb) {
+        return Err(AppError::new("This connection's engine is not a document database."));
+    }
+
+    let (client, default_database) = crate::infrastructure::mongodb::pool::build_client(profile).await?;
+    let driver: Arc<dyn DocumentDriver> = Arc::new(MongoDbDriver::new(client));
+    let server_version = driver.server_version().await?;
+
+    Ok((driver, server_version, default_database))
 }
 
 pub fn save_connection(app: &AppHandle<Wry>, profile: &ConnectionProfile) -> Result<(), AppError> {

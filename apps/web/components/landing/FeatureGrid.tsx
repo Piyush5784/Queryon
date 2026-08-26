@@ -1,7 +1,7 @@
 const BENTO_FEATURES = [
   {
-    title: "Native, not Electron",
-    description: "Built on Tauri — a fraction of the install size and memory of Electron clients.",
+    title: "Pop out any tab",
+    description: "Drag a table or query tab into its own window, then dock it back when you're done.",
     icon: "size",
   },
   {
@@ -32,8 +32,8 @@ const BENTO_FEATURES = [
     icon: "keys",
   },
   {
-    title: "Cross-platform",
-    description: "Windows, macOS, and Linux builds from the same codebase, updated in the background.",
+    title: "Browse documents too",
+    description: "MongoDB collections get their own browser — not just tables shoehorned into rows.",
     icon: "platforms",
   },
 ]
@@ -54,7 +54,7 @@ function FeatureCard({ title, description }: { title: string; description: strin
 
 export function FeatureGrid() {
   return (
-    <div className="mx-auto max-w-[1200px] px-6 text-center">
+    <div className="mx-auto max-w-7xl px-6 text-center">
       <h2 className="mb-3 text-3xl font-medium tracking-tight text-balance sm:text-4xl">
         Everything you'd expect. Nothing you don't.
       </h2>
@@ -63,18 +63,18 @@ export function FeatureGrid() {
         it.
       </p>
 
-      <div className="mt-12 flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="mt-12 flex flex-col gap-2">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {BENTO_FEATURES.slice(0, 2).map((f) => (
             <FeatureCard key={f.title} {...f} />
           ))}
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
           {BENTO_FEATURES.slice(2, 5).map((f) => (
             <FeatureCard key={f.title} {...f} />
           ))}
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {BENTO_FEATURES.slice(5, 7).map((f) => (
             <FeatureCard key={f.title} {...f} />
           ))}

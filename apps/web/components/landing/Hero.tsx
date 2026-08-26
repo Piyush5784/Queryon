@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from "motion/react"
 import { buttonVariants } from "@queryon/ui/components/button"
 import { cn } from "@queryon/ui/lib/utils"
 
+import { HeroScene } from "./HeroScene"
 import { DataGridMock } from "./mocks/DataGridMock"
 
 const HERO_MODES = [
@@ -49,6 +50,13 @@ function HeroTitle({ text }: { text: string }) {
         <span key={`${line}:${lineIndex}`} className="block">
           {line.split("").map((char, i) => {
             letterIndex += 1
+            if (char === " ") {
+              return (
+                <span key={`${char}:${i}`} className="inline-block">
+                  &nbsp;
+                </span>
+              )
+            }
             return (
               <motion.span
                 key={`${char}:${i}`}
@@ -57,7 +65,7 @@ function HeroTitle({ text }: { text: string }) {
                 animate={{ opacity: 1, y: "0em", filter: "blur(0px)" }}
                 transition={{ duration: 0.34, delay: letterIndex * 0.012, ease: "easeOut" }}
               >
-                {char === " " ? " " : char}
+                {char}
               </motion.span>
             )
           })}
@@ -84,9 +92,10 @@ export function Hero() {
     <section className="relative overflow-hidden">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[560px] [mask-image:radial-gradient(closest-side,black,transparent)]"
+        className="pointer-events-none absolute inset-0 -z-10 [mask-image:linear-gradient(to_bottom,transparent,black_15%,black_85%,transparent)]"
       >
         <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:56px_56px] opacity-40" />
+        <HeroScene />
       </div>
 
       <div className="mx-[150px] grid w-full items-start px-6 pt-20 pb-20 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-8 lg:pt-28">

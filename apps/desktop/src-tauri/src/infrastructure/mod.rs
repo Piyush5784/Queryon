@@ -1,8 +1,11 @@
 pub mod clickhouse;
 pub mod duckdb;
+pub mod libsql;
+pub mod mongodb;
 pub mod mssql;
 pub mod mysql;
 pub mod postgres;
 pub mod sqlite;
 pub mod ssh;
 pub mod storage;
+pub mod trino;

@@ -18,7 +18,9 @@ import { cn } from "@queryon/ui/lib/utils"
 const NAV_LINKS = [
   { href: "#features", label: "Features" },
   { href: "#engines", label: "Engines" },
+  { href: "/examples", label: "Examples" },
   { href: "/docs", label: "Docs" },
+  { href: "https://queryon.featurebase.app", label: "Feedback", external: true },
   { href: "https://github.com/Piyush5784/Queryon", label: "GitHub", external: true },
 ]
 
@@ -32,7 +34,7 @@ export function Navbar() {
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="sticky top-0 z-50 px-4 pt-4 relative"
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between rounded-lg border bg-background/80 p-3 pl-5 shadow-sm backdrop-blur-sm">
+      <div className="mx-auto flex max-w-7xl items-center justify-between rounded-lg border bg-background/10 bg-opacity-10 p-3 pl-5 shadow-sm backdrop-blur-sm">
         <Link href="/" className="flex items-center gap-2 font-medium">
           <div className="flex size-6 items-center justify-center rounded-md bg-foreground text-background">
             <Database className="size-3.5" />
@@ -61,7 +63,7 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           <Link
             href="/docs/install"
-            className={cn(buttonVariants({ size: "sm" }), "hidden rounded-full sm:inline-flex")}
+            className={cn(buttonVariants({ size: "sm" }), "hidden sm:inline-flex")}
           >
             Download
           </Link>

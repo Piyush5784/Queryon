@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Table2, TerminalSquare, X } from "lucide-react";
+import { Braces, Table2, TerminalSquare, X } from "lucide-react";
 
 import type { AppTab } from "@/src/app/tabs";
 
@@ -28,6 +28,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, onReorderTa
   const outOfBoundsRef = useRef(false);
   const activePointerIdRef = useRef<number | null>(null);
   const moveFrameRef = useRef<number | null>(null);
+  const lastPointerPosRef = useRef<{ x: number; y: number } | null>(null);
 
   useLayoutEffect(() => {
     const prevRects = prevRectsRef.current;
@@ -54,9 +55,20 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, onReorderTa
     prevRectsRef.current = nextRects;
   }, [tabs]);
 
+  function resolveDragOver() {
+    const pos = lastPointerPosRef.current;
+    if (!pos) return;
+    const target = document.elementFromPoint(pos.x, pos.y);
+    const tabEl = target?.closest("[data-tab-id]") as HTMLElement | null;
+    const overId = tabEl?.dataset.tabId ?? null;
+    const nextOverId = overId && overId !== draggingRef.current ? overId : null;
+    dragOverIdRef.current = nextOverId;
+  }
+
   function endDrag(commit: boolean) {
     const wasDragging = draggingRef.current;
     if (wasDragging && commit) {
+      if (moveFrameRef.current !== null) resolveDragOver();
       if (outOfBoundsRef.current) {
         onDetachTab(wasDragging);
       } else if (dragOverIdRef.current && dragOverIdRef.current !== wasDragging) {
@@ -114,11 +126,6 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, onReorderTa
     const start = pointerDownRef.current;
     if (!start || start.id !== tabId) return;
 
-    if (e.buttons === 0) {
-      endDrag(false);
-      return;
-    }
-
     if (!draggingRef.current) {
       const dx = Math.abs(e.clientX - start.x);
       const dy = Math.abs(e.clientY - start.y);
@@ -143,18 +150,14 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, onReorderTa
       setOutOfBounds(isOutside);
     }
 
-    const clientX = e.clientX;
-    const clientY = e.clientY;
+    lastPointerPosRef.current = { x: e.clientX, y: e.clientY };
     if (moveFrameRef.current !== null) return;
     moveFrameRef.current = requestAnimationFrame(() => {
       moveFrameRef.current = null;
-      const target = document.elementFromPoint(clientX, clientY);
-      const tabEl = target?.closest("[data-tab-id]") as HTMLElement | null;
-      const overId = tabEl?.dataset.tabId ?? null;
-      const nextOverId = overId && overId !== draggingRef.current ? overId : null;
-      if (dragOverIdRef.current !== nextOverId) {
-        dragOverIdRef.current = nextOverId;
-        setDragOverId(nextOverId);
+      const before = dragOverIdRef.current;
+      resolveDragOver();
+      if (dragOverIdRef.current !== before) {
+        setDragOverId(dragOverIdRef.current);
       }
     });
   }
@@ -209,6 +212,11 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, onReorderTa
               <>
                 <Table2 className="size-3.5 shrink-0" />
                 <span className="max-w-40 truncate">{tab.table}</span>
+              </>
+            ) : tab.type === "collection" ? (
+              <>
+                <Braces className="size-3.5 shrink-0" />
+                <span className="max-w-40 truncate">{tab.collection}</span>
               </>
             ) : (
               <>

@@ -19,7 +19,8 @@ export function capabilitiesFor(engine: Engine): SchemaCapabilities {
     engine === "sqlite" ||
     engine === "star-rocks" ||
     engine === "click-house" ||
-    engine === "duck-db"
+    engine === "duck-db" ||
+    engine === "lib-sql"
     ? MYSQL_CAPABILITIES
     : POSTGRES_CAPABILITIES;
 }

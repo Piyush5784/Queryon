@@ -2,6 +2,7 @@ import { EngineMarquee } from "../components/landing/EngineMarquee"
 import { FeatureDeepDives } from "../components/landing/FeatureDeepDives"
 import { FeatureGrid } from "../components/landing/FeatureGrid"
 import { Hero } from "../components/landing/Hero"
+import { MoreFeaturesCarousel } from "../components/landing/MoreFeaturesCarousel"
 import { Navbar } from "../components/landing/Navbar"
 import { ReadyToGetStarted } from "../components/landing/ReadyToGetStarted"
 import { SiteFooter } from "../components/landing/SiteFooter"
@@ -17,6 +18,7 @@ export default function LandingPage() {
 
         <div className="space-y-20 sm:space-y-[120px] lg:space-y-[180px]">
           <FeatureDeepDives />
+          <MoreFeaturesCarousel />
           <FeatureGrid />
           <TextReveal>
             Queryon isn&apos;t a smaller DBeaver or a rebranded pgAdmin. It&apos;s a client
