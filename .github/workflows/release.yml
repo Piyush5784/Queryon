@@ -13,7 +13,7 @@ jobs:
       matrix:
         include:
           - platform: ubuntu-latest
-            args: ""
+            args: "--bundles deb,rpm"
           # - platform: windows-latest
           #   args: ""
           # - platform: macos-latest
