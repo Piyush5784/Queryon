@@ -47,7 +47,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg3RjYxQTU1N0I3MjUzNjUKUldSbFUzSjdWUnIyaDdGd1JnaGczWFhOeHhqamhtU2FucUlUNWNVZnExYXdwdTE4Rmc3SzRYdDMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFBQUQxQUVFNzQwQkYwRjUKUldUMThBdDA3aHF0R25WRHhkdTVDODhRdEM1L21KMHdBU21ZV1Y1c0M1TkErbmdER3pJbDJNUXgK",
       "endpoints": [
         "https://github.com/Piyush5784/Queryon/releases/latest/download/latest.json"
       ]
