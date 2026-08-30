@@ -93,3 +93,123 @@ async fn lists_collections_and_documents_round_trip() {
         .expect("should list collections after cleanup");
     assert!(!collections_after.iter().any(|c| c.name == probe_collection));
 }
+
+#[tokio::test]
+async fn inserts_updates_and_deletes_documents() {
+    let Some(uri) = test_uri() else {
+        eprintln!("skipping: MONGODB_TEST_URI not set");
+        return;
+    };
+
+    let profile = test_profile(&uri);
+    let (driver, _version, _default_db) = open_document_connection(&profile)
+        .await
+        .expect("should connect");
+
+    let probe_collection = "_queryon_driver_crud_test";
+    let mongo_client = mongodb::Client::with_uri_str(&uri).await.expect("raw client");
+    let db = mongo_client.database("NeonDbClient");
+
+    let inserted_id = driver
+        .insert_document(
+            "NeonDbClient",
+            probe_collection,
+            serde_json::json!({ "kind": "crud-test", "value": 1 }),
+        )
+        .await
+        .expect("should insert document");
+    assert!(!inserted_id.is_empty());
+
+    let fetched = driver
+        .get_document("NeonDbClient", probe_collection, &inserted_id)
+        .await
+        .expect("should fetch document")
+        .expect("document should exist after insert");
+    assert_eq!(fetched.get("value").and_then(|v| v.as_i64()), Some(1));
+
+    driver
+        .update_document(
+            "NeonDbClient",
+            probe_collection,
+            &inserted_id,
+            serde_json::json!({ "kind": "crud-test", "value": 2 }),
+        )
+        .await
+        .expect("should update document");
+
+    let updated = driver
+        .get_document("NeonDbClient", probe_collection, &inserted_id)
+        .await
+        .expect("should fetch document")
+        .expect("document should exist after update");
+    assert_eq!(updated.get("value").and_then(|v| v.as_i64()), Some(2));
+
+    driver
+        .delete_document("NeonDbClient", probe_collection, &inserted_id)
+        .await
+        .expect("should delete document");
+
+    let after_delete = driver
+        .get_document("NeonDbClient", probe_collection, &inserted_id)
+        .await
+        .expect("get_document should not error for a missing document");
+    assert!(after_delete.is_none());
+
+    let delete_again = driver
+        .delete_document("NeonDbClient", probe_collection, &inserted_id)
+        .await;
+    assert!(delete_again.is_err(), "deleting a missing document should error");
+
+    db.collection::<mongodb::bson::Document>(probe_collection)
+        .drop()
+        .await
+        .expect("cleanup should succeed");
+}
+
+#[tokio::test]
+async fn reports_collection_stats() {
+    let Some(uri) = test_uri() else {
+        eprintln!("skipping: MONGODB_TEST_URI not set");
+        return;
+    };
+
+    let profile = test_profile(&uri);
+    let (driver, _version, _default_db) = open_document_connection(&profile)
+        .await
+        .expect("should connect");
+
+    let probe_collection = "_queryon_driver_stats_test";
+    let mongo_client = mongodb::Client::with_uri_str(&uri).await.expect("raw client");
+    let db = mongo_client.database("NeonDbClient");
+    let coll = db.collection::<mongodb::bson::Document>(probe_collection);
+    coll.insert_many([
+        mongodb::bson::doc! { "a": 1 },
+        mongodb::bson::doc! { "a": 2 },
+        mongodb::bson::doc! { "a": 3 },
+    ])
+    .await
+    .expect("seed insert");
+    coll.create_index(mongodb::IndexModel::builder().keys(mongodb::bson::doc! { "a": 1 }).build())
+        .await
+        .expect("create index");
+
+    let collections = driver
+        .list_collections("NeonDbClient")
+        .await
+        .expect("should list collections");
+    let stats = collections
+        .iter()
+        .find(|c| c.name == probe_collection)
+        .expect("probe collection should be present");
+
+    assert_eq!(stats.estimated_count, 3.0);
+    assert!(stats.storage_size_bytes > 0.0, "storage size should be positive");
+    assert!(stats.avg_document_size_bytes > 0.0, "avg document size should be positive");
+    assert!(stats.index_count >= 2, "should have _id index plus the created index");
+    assert!(stats.total_index_size_bytes > 0.0, "total index size should be positive");
+
+    db.collection::<mongodb::bson::Document>(probe_collection)
+        .drop()
+        .await
+        .expect("cleanup should succeed");
+}

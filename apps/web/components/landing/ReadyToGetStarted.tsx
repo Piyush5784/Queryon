@@ -21,12 +21,6 @@ export function ReadyToGetStarted() {
           Download Queryon
           <ArrowRight className="size-4" />
         </Link>
-        <a
-          href="https://github.com/Piyush5784/Queryon"
-          className={buttonVariants({ size: "lg", variant: "outline" })}
-        >
-          View on GitHub
-        </a>
       </div>
       <p className="mt-4 text-sm text-muted-foreground">
         Windows, macOS, and Linux · No account required

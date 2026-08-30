@@ -17,6 +17,7 @@ export const ENGINE_OPTIONS: { value: Engine; label: string }[] = [
   { value: "click-house", label: "ClickHouse" },
   { value: "duck-db", label: "DuckDB" },
   { value: "lib-sql", label: "LibSQL" },
+  { value: "trino", label: "Trino" },
   { value: "mongo-db", label: "MongoDB" },
 ];
 
@@ -34,6 +35,7 @@ const ENGINE_COLORS: Record<Engine, string> = {
   "click-house": "text-yellow-500",
   "duck-db": "text-yellow-600",
   "lib-sql": "text-indigo-500",
+  trino: "text-purple-600",
   "mongo-db": "text-green-600",
 };
 

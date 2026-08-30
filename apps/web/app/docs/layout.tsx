@@ -22,9 +22,6 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             <Link href="/docs" className="text-foreground">
               Docs
             </Link>
-            <Link href="https://github.com/Piyush5784/Queryon" className="hover:text-foreground">
-              GitHub
-            </Link>
           </nav>
         </div>
       </header>

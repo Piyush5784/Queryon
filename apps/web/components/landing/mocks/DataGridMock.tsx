@@ -45,7 +45,7 @@ export function DataGridMock({
 
   return (
     <WindowChrome title="users — devdb">
-      <div className={cn("flex", fixedHeight && "lg:h-[680px]")}>
+      <div className={cn("flex", fixedHeight && "h-[420px] lg:h-[680px]")}>
         {!compact && (
           <div className="hidden w-48 shrink-0 border-r bg-muted/20 p-3 sm:block">
             <p className="mb-2 px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">

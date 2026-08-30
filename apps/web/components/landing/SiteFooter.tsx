@@ -9,12 +9,6 @@ export function SiteFooter() {
           <Link href="/docs" className="transition-colors hover:text-foreground">
             Docs
           </Link>
-          <a
-            href="https://github.com/Piyush5784/Queryon"
-            className="transition-colors hover:text-foreground"
-          >
-            GitHub
-          </a>
         </div>
       </div>
     </footer>

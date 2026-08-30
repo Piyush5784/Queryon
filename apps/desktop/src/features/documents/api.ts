@@ -9,8 +9,16 @@ export {
   docListCollections,
   docListDocuments,
   docGetDocument,
+  docInsertDocument,
+  docUpdateDocument,
+  docDeleteDocument,
   type CollectionRef,
   type DatabaseRef,
   type DocumentPage,
 } from "@/src/lib/tauri/commands";
-export { collectionTabId, type CollectionTab } from "@/src/features/documents/types";
+export {
+  collectionTabId,
+  databaseTabId,
+  type CollectionTab,
+  type DatabaseTab,
+} from "@/src/features/documents/types";

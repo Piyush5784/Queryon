@@ -9,6 +9,7 @@ import {
 } from "@queryon/ui/components/empty";
 import type { AppTab } from "@/src/app/tabs";
 import type { SavedConnectionProfile } from "@/src/features/connections/types";
+import { CollectionsOverview } from "@/src/features/documents/components/CollectionsOverview";
 import { CollectionView } from "@/src/features/documents/components/CollectionView";
 import { QueryTabView } from "@/src/features/query/components/QueryTabView";
 import { TabBar } from "@/src/features/tables/components/TableToolbar/TabBar";
@@ -32,6 +33,7 @@ interface WorkspaceProps {
   onDetachTab: (id: string) => void;
   onNewConnection: () => void;
   onQueryActivity: () => void;
+  onOpenCollection: (connectionId: string, database: string, collection: string) => void;
 }
 
 export function Workspace({
@@ -51,6 +53,7 @@ export function Workspace({
   onDetachTab,
   onNewConnection,
   onQueryActivity,
+  onOpenCollection,
 }: WorkspaceProps) {
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
@@ -84,6 +87,14 @@ export function Workspace({
         {activeTab ? (
           activeTab.type === "table" ? (
             <TableView key={activeTab.id} tab={activeTab} />
+          ) : activeTab.type === "database" ? (
+            <CollectionsOverview
+              key={activeTab.id}
+              tab={activeTab}
+              onOpenCollection={(database, collection) =>
+                onOpenCollection(activeTab.connectionId, database, collection)
+              }
+            />
           ) : activeTab.type === "collection" ? (
             <CollectionView key={activeTab.id} tab={activeTab} />
           ) : (

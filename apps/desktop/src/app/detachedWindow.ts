@@ -24,7 +24,9 @@ export async function detachTab(tab: AppTab): Promise<void> {
         ? `${tab.schema}.${tab.table}`
         : tab.type === "collection"
           ? `${tab.database}.${tab.collection}`
-          : tab.title,
+          : tab.type === "database"
+            ? tab.database
+            : tab.title,
     width: 900,
     height: 600,
     minWidth: 480,

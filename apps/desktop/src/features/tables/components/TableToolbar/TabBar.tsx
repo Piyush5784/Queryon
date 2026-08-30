@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Braces, Table2, TerminalSquare, X } from "lucide-react";
+import { Braces, Database, Table2, TerminalSquare, X } from "lucide-react";
 
 import type { AppTab } from "@/src/app/tabs";
 
@@ -217,6 +217,11 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, onReorderTa
               <>
                 <Braces className="size-3.5 shrink-0" />
                 <span className="max-w-40 truncate">{tab.collection}</span>
+              </>
+            ) : tab.type === "database" ? (
+              <>
+                <Database className="size-3.5 shrink-0" />
+                <span className="max-w-40 truncate">{tab.database}</span>
               </>
             ) : (
               <>

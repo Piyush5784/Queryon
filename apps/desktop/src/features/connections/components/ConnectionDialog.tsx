@@ -81,6 +81,7 @@ const DEV_URLS: Record<Engine, string> = {
   "click-house": "http://devuser:devpass@localhost:48123/devdb",
   "duck-db": "",
   "lib-sql": "",
+  trino: "http://admin@localhost:48080",
   "mongo-db": "",
 };
 
@@ -98,6 +99,7 @@ const FIELD_PLACEHOLDERS: Record<Engine, { database: string; user: string }> = {
   "click-house": { database: "default", user: "default" },
   "duck-db": { database: "postgres", user: "postgres" },
   "lib-sql": { database: "postgres", user: "postgres" },
+  trino: { database: "memory", user: "admin" },
   "mongo-db": { database: "myDatabase", user: "" },
 };
 

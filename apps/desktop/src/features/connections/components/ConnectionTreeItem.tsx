@@ -81,6 +81,7 @@ interface ConnectionTreeItemProps {
   onDisconnect: () => void;
   onDeleteConnection: () => void;
   onOpenTable: (schema: string, table: string) => void;
+  onOpenDatabase: (database: string) => void;
   onOpenCollection: (database: string, collection: string) => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (sql: string) => void;
@@ -99,6 +100,7 @@ export function ConnectionTreeItem({
   onDisconnect,
   onDeleteConnection,
   onOpenTable,
+  onOpenDatabase,
   onOpenCollection,
   onOpenSavedQuery,
   onOpenHistoryEntry,
@@ -295,6 +297,7 @@ export function ConnectionTreeItem({
             <CollectionBrowser
               connectionId={connection.id}
               defaultDatabase={defaultDatabase}
+              onOpenDatabase={onOpenDatabase}
               onOpenCollection={onOpenCollection}
             />
           )}

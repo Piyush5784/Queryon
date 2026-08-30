@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, GitBranch, Table2, Terminal, Waypoints } from "lucide-react"
+import { ArrowRight, Sparkles, Table2, Terminal, Waypoints } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 
 import { buttonVariants } from "@queryon/ui/components/button"
@@ -48,27 +48,25 @@ function HeroTitle({ text }: { text: string }) {
     <>
       {lines.map((line, lineIndex) => (
         <span key={`${line}:${lineIndex}`} className="block">
-          {line.split("").map((char, i) => {
-            letterIndex += 1
-            if (char === " ") {
-              return (
-                <span key={`${char}:${i}`} className="inline-block">
-                  &nbsp;
-                </span>
-              )
-            }
-            return (
-              <motion.span
-                key={`${char}:${i}`}
-                className="inline-block"
-                initial={{ opacity: 0, y: "0.4em", filter: "blur(6px)" }}
-                animate={{ opacity: 1, y: "0em", filter: "blur(0px)" }}
-                transition={{ duration: 0.34, delay: letterIndex * 0.012, ease: "easeOut" }}
-              >
-                {char}
-              </motion.span>
-            )
-          })}
+          {line.split(" ").map((word, wordIndex, words) => (
+            <span key={`${word}:${wordIndex}`} className="inline-flex whitespace-nowrap">
+              {word.split("").map((char, i) => {
+                letterIndex += 1
+                return (
+                  <motion.span
+                    key={`${char}:${i}`}
+                    className="inline-block"
+                    initial={{ opacity: 0, y: "0.4em", filter: "blur(6px)" }}
+                    animate={{ opacity: 1, y: "0em", filter: "blur(0px)" }}
+                    transition={{ duration: 0.34, delay: letterIndex * 0.012, ease: "easeOut" }}
+                  >
+                    {char}
+                  </motion.span>
+                )
+              })}
+              {wordIndex < words.length - 1 && <>&nbsp;</>}
+            </span>
+          ))}
         </span>
       ))}
     </>
@@ -98,16 +96,12 @@ export function Hero() {
         <HeroScene />
       </div>
 
-      <div className="mx-[150px] grid w-full items-start px-6 pt-20 pb-20 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-8 lg:pt-28">
+      <div className="mx-auto grid w-full grid-cols-1 items-start px-6 pt-20 pb-20 lg:mx-[150px] lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-8 lg:pt-28">
         <div className="flex flex-col items-start gap-5 text-left">
-          <a
-            href="https://github.com/Piyush5784/Queryon"
-            className="group inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-1 text-xs text-muted-foreground shadow-sm transition-colors hover:border-foreground/20 hover:text-foreground"
-          >
-            <GitBranch className="size-3.5" />
-            Free & open source on GitHub
-            <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
-          </a>
+          <div className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-1 text-xs text-muted-foreground shadow-sm">
+            <Sparkles className="size-3.5" />
+            One client for every database
+          </div>
 
           <div className="inline-flex gap-1 rounded-lg border bg-muted/40 p-1">
             {HERO_MODES.map((mode, index) => {
@@ -175,7 +169,7 @@ export function Hero() {
             </AnimatePresence>
           </h1>
 
-          <p className="max-w-xl text-lg text-muted-foreground text-balance">
+          <p className="w-full max-w-xl text-lg text-muted-foreground text-balance">
             A fast, native desktop client for Postgres, MySQL, SQL Server, ClickHouse, DuckDB, and
             a dozen more — browse schemas, run queries, and edit data without switching tools.
           </p>
@@ -185,12 +179,6 @@ export function Hero() {
               Download for free
               <ArrowRight className="size-4" />
             </Link>
-            <a
-              href="https://github.com/Piyush5784/Queryon"
-              className={buttonVariants({ size: "lg", variant: "outline" })}
-            >
-              View on GitHub
-            </a>
           </div>
           <p className="text-xs text-muted-foreground">
             Windows, macOS, and Linux · No account required

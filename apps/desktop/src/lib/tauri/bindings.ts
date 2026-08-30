@@ -87,6 +87,9 @@ export const commands = {
 	docListCollections: (connectionId: string, database: string) => typedError<CollectionRef[], AppError>(__TAURI_INVOKE("doc_list_collections", { connectionId, database })),
 	docListDocuments: (connectionId: string, database: string, collection: string, limit: number, skip: number) => typedError<DocumentPage, AppError>(__TAURI_INVOKE("doc_list_documents", { connectionId, database, collection, limit, skip })),
 	docGetDocument: (connectionId: string, database: string, collection: string, id: string) => typedError<string | null, AppError>(__TAURI_INVOKE("doc_get_document", { connectionId, database, collection, id })),
+	docInsertDocument: (connectionId: string, database: string, collection: string, document: string) => typedError<string, AppError>(__TAURI_INVOKE("doc_insert_document", { connectionId, database, collection, document })),
+	docUpdateDocument: (connectionId: string, database: string, collection: string, id: string, document: string) => typedError<null, AppError>(__TAURI_INVOKE("doc_update_document", { connectionId, database, collection, id, document })),
+	docDeleteDocument: (connectionId: string, database: string, collection: string, id: string) => typedError<null, AppError>(__TAURI_INVOKE("doc_delete_document", { connectionId, database, collection, id })),
 };
 
 /* Types */
@@ -95,6 +98,10 @@ export type AppError = string;
 export type CollectionRef = {
 	name: string,
 	estimatedCount: number | null,
+	storageSizeBytes: number | null,
+	avgDocumentSizeBytes: number | null,
+	indexCount: number,
+	totalIndexSizeBytes: number | null,
 };
 
 export type ColumnEdit = {

@@ -12,10 +12,16 @@ import { toErrorMessage } from "@/src/lib/tauri/errors";
 interface CollectionBrowserProps {
   connectionId: string;
   defaultDatabase: string | null;
+  onOpenDatabase: (database: string) => void;
   onOpenCollection: (database: string, collection: string) => void;
 }
 
-export function CollectionBrowser({ connectionId, defaultDatabase, onOpenCollection }: CollectionBrowserProps) {
+export function CollectionBrowser({
+  connectionId,
+  defaultDatabase,
+  onOpenDatabase,
+  onOpenCollection,
+}: CollectionBrowserProps) {
   const [databases, setDatabases] = useState<DatabaseRef[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +82,7 @@ export function CollectionBrowser({ connectionId, defaultDatabase, onOpenCollect
           connectionId={connectionId}
           database={db.name}
           defaultOpen={db.name === defaultDatabase}
+          onOpenDatabase={onOpenDatabase}
           onOpenCollection={onOpenCollection}
         />
       ))}
@@ -87,11 +94,13 @@ function DatabaseGroup({
   connectionId,
   database,
   defaultOpen,
+  onOpenDatabase,
   onOpenCollection,
 }: {
   connectionId: string;
   database: string;
   defaultOpen: boolean;
+  onOpenDatabase: (database: string) => void;
   onOpenCollection: (database: string, collection: string) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -127,7 +136,10 @@ function DatabaseGroup({
       <SidebarMenuSubItem>
         <button
           type="button"
-          onClick={() => setOpen((prev) => !prev)}
+          onClick={() => {
+            setOpen((prev) => !prev);
+            onOpenDatabase(database);
+          }}
           className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent"
         >
           <ChevronRight className={`size-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
