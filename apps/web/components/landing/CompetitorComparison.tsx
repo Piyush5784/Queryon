@@ -191,13 +191,13 @@ export function CompetitorComparison() {
         </Table>
       </div>
 
-      <p className="mt-3 max-w-2xl text-xs text-muted-foreground">
+      <p className="mt-3 text-center mx-20 text-xs text-muted-foreground">
         "—" means we couldn't verify a claim either way at the time this was written. Queryon's
         cold start was measured on an unoptimized debug build on Linux — a release build should
         only be faster. Competitor startup figures are commonly reported ranges, not numbers we
         measured ourselves.
       </p>
-
+{/* 
       <button
         type="button"
         onClick={() => setShowMore((v) => !v)}
@@ -224,7 +224,7 @@ export function CompetitorComparison() {
             ))}
           </div>
         </div>
-      )}
+      )} */}
     </section>
   )
 }

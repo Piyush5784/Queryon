@@ -68,7 +68,7 @@ export function FeatureDeepDives() {
           index={3}
           title="Easily view & edit data"
           description="Browse and edit tables in a spreadsheet-like grid. Edit JSON cells with syntax checking, even when stored as TEXT."
-          visual={<DataGridMock compact />}
+          visual={<DataGridMock compact height="200px" />}
         />
         <FeatureRow
           index={4}

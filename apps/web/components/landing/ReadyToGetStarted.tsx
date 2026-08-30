@@ -6,7 +6,7 @@ import { cn } from "@queryon/ui/lib/utils"
 
 export function ReadyToGetStarted() {
   return (
-    <div className="relative mx-auto flex min-h-[300px] w-[calc(100%-20px)] max-w-[1000px] flex-col items-center justify-center overflow-hidden rounded-[20px] border bg-card p-8 text-center">
+    <div className="relative mx-auto flex min-h-[300px] pt-0  mb-10 mt-0 w-[calc(100%-20px)] max-w-[1000px] flex-col items-center justify-center overflow-hidden rounded-[20px] border bg-card p-8 text-center">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 -z-10 mx-auto h-[300px] max-w-[1000px] [mask-image:radial-gradient(closest-side,black,transparent)]"

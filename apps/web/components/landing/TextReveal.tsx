@@ -32,8 +32,8 @@ export function TextReveal({ children }: { children: string }) {
   const words = children.split(" ")
 
   return (
-    <div ref={setTargetRef} className="relative z-0 h-[150vh]">
-      <div className="sticky top-0 mx-auto flex h-[50%] max-w-4xl items-center justify-center px-4 py-20">
+    <div ref={setTargetRef} className="relative z-0 ">
+      <div className="sticky top-0 mx-auto flex h-[50%] max-w-4xl items-center justify-center px-4 ">
         <span className="flex flex-wrap justify-center gap-y-4 p-5 text-center text-3xl font-medium text-balance md:gap-y-6 md:text-[44px]">
           {words.map((word, i) => {
             const start = i / words.length

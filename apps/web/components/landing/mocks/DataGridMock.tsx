@@ -36,16 +36,22 @@ function buildRows(count: number) {
 export function DataGridMock({
   compact,
   fixedHeight,
+  height,
 }: {
   compact?: boolean
   fixedHeight?: boolean
+  height?: string
 }) {
   const columns = ["id", "email", "full_name", "plan", "country", "signed_up_via", "created_at"]
-  const rows = buildRows(fixedHeight ? 500 : 12)
+  const rows = buildRows(fixedHeight ? 500 : 3)
+  const scrolls = Boolean(height) || fixedHeight
 
   return (
     <WindowChrome title="users — devdb">
-      <div className={cn("flex", fixedHeight && "h-[420px] lg:h-[680px]")}>
+      <div
+        className={cn("flex", !height && fixedHeight && "h-[420px] lg:h-[680px]")}
+        style={height ? { height } : undefined}
+      >
         {!compact && (
           <div className="hidden w-48 shrink-0 border-r bg-muted/20 p-3 sm:block">
             <p className="mb-2 px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
@@ -76,7 +82,7 @@ export function DataGridMock({
           </div>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className={cn("min-w-0 flex-1 overflow-x-auto", fixedHeight && "overflow-y-auto")}>
+          <div className={cn("min-w-0 flex-1 overflow-x-auto", scrolls && "overflow-y-auto")}>
             <table className="w-full border-collapse text-left font-mono text-xs">
               <thead>
                 <tr className="border-b bg-muted/20">

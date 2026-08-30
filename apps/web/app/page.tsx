@@ -6,6 +6,7 @@ import { MoreFeaturesCarousel } from "../components/landing/MoreFeaturesCarousel
 import { Navbar } from "../components/landing/Navbar"
 import { ReadyToGetStarted } from "../components/landing/ReadyToGetStarted"
 import { SiteFooter } from "../components/landing/SiteFooter"
+import { Testimonials } from "../components/landing/Testimonials"
 import { TextReveal } from "../components/landing/TextReveal"
 
 export default function LandingPage() {
@@ -20,6 +21,7 @@ export default function LandingPage() {
           <FeatureDeepDives />
           <MoreFeaturesCarousel />
           <CompetitorComparison />
+          <Testimonials />
           <TextReveal>
             Queryon isn&apos;t a smaller DBeaver or a rebranded pgAdmin. It&apos;s a client
             written for people who spend their whole day inside a database.
