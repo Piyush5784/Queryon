@@ -17,10 +17,12 @@ jobs:
         include:
           - platform: ubuntu-latest
             args: "--bundles deb,rpm"
-          # - platform: windows-latest
-          #   args: ""
-          # - platform: macos-latest
-          #   args: "--target universal-apple-darwin"
+          - platform: windows-latest
+            args: ""
+          - platform: macos-latest
+            args: "--target aarch64-apple-darwin"
+          - platform: macos-latest
+            args: "--target x86_64-apple-darwin"
 
     runs-on: ${{ matrix.platform }}
 
@@ -36,7 +38,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
-          key: ${{ matrix.platform }}
+          key: ${{ matrix.platform }}-${{ matrix.args }}
           cache-directories: |
             !apps/desktop/src-tauri/target/**/duckdb-download
 
