@@ -9,6 +9,8 @@ dist-ssr/
 .turbo/
 **/src-tauri/target/
 **/src-tauri/gen/
+.open-next
+.wrangler
 
 # Environment / secrets — never commit these
 .env

@@ -9,7 +9,10 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@glideapps/glide-data-grid": "^6.0.3",
@@ -28,6 +31,7 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.4",
     "@queryon/eslint-config": "workspace:^",
     "@queryon/typescript-config": "workspace:*",
     "@tailwindcss/postcss": "^4",
@@ -35,6 +39,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.127.1"
   }
 }
