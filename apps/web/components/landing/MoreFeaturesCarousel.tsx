@@ -73,5 +73,5 @@ export function MoreFeaturesCarousel() {
         </div>
       </div>
     </section>
-  )
+  ) 
 }
