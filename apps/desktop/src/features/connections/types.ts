@@ -14,6 +14,7 @@ export type Engine =
   | "click-house"
   | "duck-db"
   | "lib-sql"
+  | "trino"
   | "mongo-db";
 
 export type SshAuth =

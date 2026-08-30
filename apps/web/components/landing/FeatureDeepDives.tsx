@@ -42,7 +42,7 @@ export function FeatureDeepDives() {
     <section id="features" className="mx-auto max-w-7xl px-6">
       <div className="mx-auto mb-20 max-w-2xl text-center">
         <h2 className="text-3xl font-medium tracking-tight text-balance sm:text-4xl">
-          Built for people who live in their database
+          Simple to use. Easy to love.
         </h2>
         <p className="mt-3 text-muted-foreground text-balance">
           Not a scaled-down toy client, and not an enterprise tool with a decade of accumulated

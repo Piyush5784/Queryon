@@ -137,3 +137,49 @@ pub async fn doc_get_document(
         None => Ok(None),
     }
 }
+
+fn parse_document_json(document: &str) -> Result<serde_json::Value, AppError> {
+    serde_json::from_str(document).map_err(|e| AppError::new(format!("Invalid JSON: {e}")))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn doc_insert_document(
+    connection_id: String,
+    database: String,
+    collection: String,
+    document: String,
+    registry: State<'_, DocumentConnectionRegistry>,
+) -> Result<String, AppError> {
+    let driver = driver_for(&registry, &connection_id)?;
+    let value = parse_document_json(&document)?;
+    driver.insert_document(&database, &collection, value).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn doc_update_document(
+    connection_id: String,
+    database: String,
+    collection: String,
+    id: String,
+    document: String,
+    registry: State<'_, DocumentConnectionRegistry>,
+) -> Result<(), AppError> {
+    let driver = driver_for(&registry, &connection_id)?;
+    let value = parse_document_json(&document)?;
+    driver.update_document(&database, &collection, &id, value).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn doc_delete_document(
+    connection_id: String,
+    database: String,
+    collection: String,
+    id: String,
+    registry: State<'_, DocumentConnectionRegistry>,
+) -> Result<(), AppError> {
+    let driver = driver_for(&registry, &connection_id)?;
+    driver.delete_document(&database, &collection, &id).await
+}

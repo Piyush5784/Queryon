@@ -30,6 +30,15 @@ fn document_to_json(doc: Document) -> Result<JsonValue, AppError> {
         .map_err(|e| AppError::new(format!("Failed to convert document to JSON: {e}")))
 }
 
+fn json_to_document(value: JsonValue) -> Result<Document, AppError> {
+    let bson = Bson::try_from(value)
+        .map_err(|e| AppError::new(format!("Failed to convert JSON to document: {e}")))?;
+    match bson {
+        Bson::Document(doc) => Ok(doc),
+        _ => Err(AppError::new("Document must be a JSON object.")),
+    }
+}
+
 fn preview_of(doc: &Document) -> String {
     let mut parts = Vec::new();
     for (key, value) in doc.iter() {
@@ -60,6 +69,15 @@ fn preview_value(value: &Bson) -> String {
         Bson::Document(_) => "{…}".to_string(),
         Bson::Array(_) => "[…]".to_string(),
         other => other.to_string(),
+    }
+}
+
+fn bson_as_f64(doc: &Document, key: &str) -> f64 {
+    match doc.get(key) {
+        Some(Bson::Double(v)) => *v,
+        Some(Bson::Int32(v)) => *v as f64,
+        Some(Bson::Int64(v)) => *v as f64,
+        _ => 0.0,
     }
 }
 
@@ -106,9 +124,26 @@ impl DocumentDriver for MongoDbDriver {
         for name in names {
             let coll = db.collection::<Document>(&name);
             let count = coll.estimated_document_count().await.unwrap_or(0);
+
+            let stats = db.run_command(doc! { "collStats": &name }).await.ok();
+            let (storage_size, avg_obj_size, index_count, total_index_size) = stats
+                .map(|s| {
+                    (
+                        bson_as_f64(&s, "storageSize"),
+                        bson_as_f64(&s, "avgObjSize"),
+                        bson_as_f64(&s, "nindexes") as u32,
+                        bson_as_f64(&s, "totalIndexSize"),
+                    )
+                })
+                .unwrap_or((0.0, 0.0, 0, 0.0));
+
             refs.push(CollectionRef {
                 name,
                 estimated_count: count as f64,
+                storage_size_bytes: storage_size,
+                avg_document_size_bytes: avg_obj_size,
+                index_count,
+                total_index_size_bytes: total_index_size,
             });
         }
         Ok(refs)
@@ -173,5 +208,57 @@ impl DocumentDriver for MongoDbDriver {
             Some(doc) => Ok(Some(document_to_json(doc)?)),
             None => Ok(None),
         }
+    }
+
+    async fn insert_document(
+        &self,
+        database: &str,
+        collection: &str,
+        document: JsonValue,
+    ) -> Result<String, AppError> {
+        let coll = self.client.database(database).collection::<Document>(collection);
+        let doc = json_to_document(document)?;
+        let result = coll.insert_one(doc).await.map_err(mongo_err)?;
+        match result.inserted_id {
+            Bson::ObjectId(oid) => Ok(oid.to_hex()),
+            other => Ok(other.to_string()),
+        }
+    }
+
+    async fn update_document(
+        &self,
+        database: &str,
+        collection: &str,
+        id: &str,
+        document: JsonValue,
+    ) -> Result<(), AppError> {
+        let coll = self.client.database(database).collection::<Document>(collection);
+        let filter = parse_id_filter(id);
+        let mut doc = json_to_document(document)?;
+        doc.remove("_id");
+
+        let result = coll
+            .replace_one(filter, doc)
+            .await
+            .map_err(mongo_err)?;
+        if result.matched_count == 0 {
+            return Err(AppError::new("Document not found — it may have been deleted."));
+        }
+        Ok(())
+    }
+
+    async fn delete_document(
+        &self,
+        database: &str,
+        collection: &str,
+        id: &str,
+    ) -> Result<(), AppError> {
+        let coll = self.client.database(database).collection::<Document>(collection);
+        let filter = parse_id_filter(id);
+        let result = coll.delete_one(filter).await.map_err(mongo_err)?;
+        if result.deleted_count == 0 {
+            return Err(AppError::new("Document not found — it may have already been deleted."));
+        }
+        Ok(())
     }
 }

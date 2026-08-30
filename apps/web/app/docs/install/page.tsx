@@ -138,14 +138,7 @@ function ComingSoon({ platform }: { platform: string }) {
           In progress
         </Badge>
         <p className="max-w-sm text-sm text-muted-foreground">
-          {platform} builds aren&apos;t published yet. Star the{" "}
-          <a
-            href="https://github.com/Piyush5784/Queryon"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
-            GitHub repo
-          </a>{" "}
-          to get notified when they land.
+          {platform} builds aren&apos;t published yet. Check back soon.
         </p>
       </CardContent>
     </Card>

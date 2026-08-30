@@ -437,3 +437,35 @@ export async function docGetDocument(
   if (encoded === null) return null;
   return JSON.parse(encoded) as CellValue;
 }
+
+export async function docInsertDocument(
+  connectionId: string,
+  database: string,
+  collection: string,
+  document: unknown
+): Promise<string> {
+  return unwrap(
+    await commands.docInsertDocument(connectionId, database, collection, JSON.stringify(document))
+  );
+}
+
+export async function docUpdateDocument(
+  connectionId: string,
+  database: string,
+  collection: string,
+  id: string,
+  document: unknown
+): Promise<void> {
+  await unwrap(
+    await commands.docUpdateDocument(connectionId, database, collection, id, JSON.stringify(document))
+  );
+}
+
+export async function docDeleteDocument(
+  connectionId: string,
+  database: string,
+  collection: string,
+  id: string
+): Promise<void> {
+  await unwrap(await commands.docDeleteDocument(connectionId, database, collection, id));
+}

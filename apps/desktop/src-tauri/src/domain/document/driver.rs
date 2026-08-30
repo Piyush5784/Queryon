@@ -26,4 +26,26 @@ pub trait DocumentDriver: Send + Sync {
         collection: &str,
         id: &str,
     ) -> Result<Option<JsonValue>, AppError>;
+
+    async fn insert_document(
+        &self,
+        database: &str,
+        collection: &str,
+        document: JsonValue,
+    ) -> Result<String, AppError>;
+
+    async fn update_document(
+        &self,
+        database: &str,
+        collection: &str,
+        id: &str,
+        document: JsonValue,
+    ) -> Result<(), AppError>;
+
+    async fn delete_document(
+        &self,
+        database: &str,
+        collection: &str,
+        id: &str,
+    ) -> Result<(), AppError>;
 }

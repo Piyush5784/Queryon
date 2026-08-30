@@ -8,7 +8,7 @@ import {
 } from "@/src/features/connections/api";
 import { ConnectionDialog } from "@/src/features/connections/components/ConnectionDialog";
 import { engineOf, isDocumentEngine, type ConnectionProfile, type SavedConnectionProfile } from "@/src/features/connections/types";
-import { collectionTabId, docConnectSaved, docDisconnect } from "@/src/features/documents/api";
+import { collectionTabId, databaseTabId, docConnectSaved, docDisconnect } from "@/src/features/documents/api";
 import type { SavedQuery } from "@/src/features/query/api";
 import { clearQueryDraft } from "@/src/features/query/queryDrafts";
 import { isTabRunning } from "@/src/features/query/runningTabs";
@@ -180,6 +180,20 @@ function App() {
     setShowHome(false);
   }
 
+  function handleOpenDatabase(connectionId: string, database: string) {
+    const id = databaseTabId(connectionId, database);
+    const connection = connections.find((c) => c.id === connectionId);
+    const connectionName = connection?.name ?? "";
+
+    setTabs((prev) =>
+      prev.some((t) => t.id === id)
+        ? prev
+        : [...prev, { type: "database", id, connectionId, connectionName, database }]
+    );
+    setActiveTabId(id);
+    setShowHome(false);
+  }
+
   function handleOpenCollection(connectionId: string, database: string, collection: string) {
     const id = collectionTabId(connectionId, database, collection);
     const connection = connections.find((c) => c.id === connectionId);
@@ -304,6 +318,7 @@ function App() {
           onDeleteConnection={handleDeleteConnection}
           onDisconnect={handleDisconnect}
           onOpenTable={handleOpenTable}
+          onOpenDatabase={handleOpenDatabase}
           onOpenCollection={handleOpenCollection}
           onNewConnection={() => setDialogOpen(true)}
           onNewQuery={handleNewQuery}

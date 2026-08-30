@@ -396,6 +396,7 @@ export function TableView({ tab }: TableViewProps) {
             disabled={loading}
             tooltip="Refresh"
             shortcut={["F5"]}
+            aria-label="Refresh"
           >
             <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
           </TooltipButton>

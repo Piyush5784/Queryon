@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/src/components/theme-provider";
 import { TooltipButton } from "@/src/components/TooltipButton";
 import type { AppTab } from "@/src/app/tabs";
 import { redockTab } from "@/src/app/detachedWindow";
+import { CollectionsOverview } from "@/src/features/documents/components/CollectionsOverview";
 import { CollectionView } from "@/src/features/documents/components/CollectionView";
 import { QueryTabView } from "@/src/features/query/components/QueryTabView";
 import { TableView } from "@/src/features/tables/components/TableView";
@@ -37,7 +38,9 @@ export function DetachedTabApp({ tab }: DetachedTabAppProps) {
                 ? `${tab.schema}.${tab.table}`
                 : tab.type === "collection"
                   ? `${tab.database}.${tab.collection}`
-                  : tab.title}
+                  : tab.type === "database"
+                    ? tab.database
+                    : tab.title}
             </span>
             <TooltipButton
               size="icon-sm"
@@ -54,6 +57,8 @@ export function DetachedTabApp({ tab }: DetachedTabAppProps) {
               <TableView tab={tab} />
             ) : tab.type === "collection" ? (
               <CollectionView tab={tab} />
+            ) : tab.type === "database" ? (
+              <CollectionsOverview tab={tab} onOpenCollection={() => {}} />
             ) : (
               <QueryTabView tab={tab} />
             )}

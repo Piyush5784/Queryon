@@ -16,8 +16,8 @@ import { cn } from "@queryon/ui/lib/utils"
 
 const CAROUSEL_FEATURES = [
   {
-    title: "Native, not Electron",
-    description: "A fraction of the install size and memory of Electron clients.",
+    title: "Pop out any tab",
+    description: "Drag a table or query tab into its own window, then dock it back.",
     icon: Laptop,
     dark: true,
   },
@@ -47,8 +47,8 @@ const CAROUSEL_FEATURES = [
     icon: Keyboard,
   },
   {
-    title: "Cross-platform",
-    description: "Windows, macOS, and Linux builds from the same codebase.",
+    title: "Browse documents too",
+    description: "MongoDB collections get their own browser, not rows shoehorned into a grid.",
     icon: ShieldCheck,
   },
 ]

@@ -66,6 +66,9 @@ pub fn run() {
         commands::document::doc_list_collections,
         commands::document::doc_list_documents,
         commands::document::doc_get_document,
+        commands::document::doc_insert_document,
+        commands::document::doc_update_document,
+        commands::document::doc_delete_document,
     ]);
 
     #[cfg(debug_assertions)]
