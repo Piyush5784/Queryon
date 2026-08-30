@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { Database } from "lucide-react"
 
+import { ThemeToggle } from "../../components/theme-toggle"
+
 const NAV = [
   { href: "/docs", label: "Overview" },
   { href: "/docs/install", label: "Install" },
@@ -22,6 +24,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             <Link href="/docs" className="text-foreground">
               Docs
             </Link>
+            <ThemeToggle />
           </nav>
         </div>
       </header>

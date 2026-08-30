@@ -15,6 +15,8 @@ import {
 } from "@queryon/ui/components/navigation-menu"
 import { cn } from "@queryon/ui/lib/utils"
 
+import { ThemeToggle } from "../theme-toggle"
+
 const NAV_LINKS = [
   { href: "#features", label: "Features" },
   { href: "#engines", label: "Engines" },
@@ -60,6 +62,7 @@ export function Navbar() {
         </NavigationMenu>
 
         <div className="flex items-center gap-2">
+          <ThemeToggle className="hidden sm:inline-flex" />
           <Link
             href="/docs/install"
             className={cn(buttonVariants({ size: "sm" }), "hidden sm:inline-flex")}
@@ -117,6 +120,7 @@ export function Navbar() {
           >
             Download
           </Link>
+          <ThemeToggle className="mt-1 w-full rounded-full" />
         </div>
       </motion.div>
     </motion.div>

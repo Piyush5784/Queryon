@@ -11,7 +11,9 @@ import { Kbd } from "@queryon/ui/components/kbd"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@queryon/ui/components/tabs"
 import { cn } from "@queryon/ui/lib/utils"
 
-const RELEASES_URL = "https://github.com/Piyush5784/Queryon/releases/latest"
+const R2_BASE_URL = "https://pub-16a98e553e3d4f7db28008ca9262706f.r2.dev"
+const DEB_URL = `${R2_BASE_URL}/Queryon_0.2.1_amd64.deb`
+const RPM_URL = `${R2_BASE_URL}/Queryon-0.2.1-1.x86_64.rpm`
 
 type Os = "linux" | "windows" | "macos"
 
@@ -71,7 +73,7 @@ function LinuxInstall() {
           </CardHeader>
           <CardContent>
             <a
-              href={RELEASES_URL}
+              href={DEB_URL}
               className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}
             >
               <Download className="size-3.5" />
@@ -87,7 +89,7 @@ function LinuxInstall() {
           </CardHeader>
           <CardContent>
             <a
-              href={RELEASES_URL}
+              href={RPM_URL}
               className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}
             >
               <Download className="size-3.5" />

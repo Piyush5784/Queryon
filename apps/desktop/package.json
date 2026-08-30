@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "check": "cd src-tauri &&  DUCKDB_DOWNLOAD_LIB=1 cargo check",
-    "test": "cd src-tauri &&  DUCKDB_DOWNLOAD_LIB=1 cargo test"
+    "test": "cd src-tauri &&  DUCKDB_DOWNLOAD_LIB=1 cargo test",
+    "seed": "bash scripts/seed-running.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
