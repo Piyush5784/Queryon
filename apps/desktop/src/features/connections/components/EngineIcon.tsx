@@ -18,7 +18,6 @@ export const ENGINE_OPTIONS: { value: Engine; label: string }[] = [
   { value: "duck-db", label: "DuckDB" },
   { value: "lib-sql", label: "LibSQL" },
   { value: "trino", label: "Trino" },
-  { value: "mongo-db", label: "MongoDB" },
 ];
 
 const ENGINE_COLORS: Record<Engine, string> = {
