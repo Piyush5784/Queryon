@@ -469,3 +469,7 @@ export async function docDeleteDocument(
 ): Promise<void> {
   await unwrap(await commands.docDeleteDocument(connectionId, database, collection, id));
 }
+
+export async function logFrontendError(message: string, stack?: string): Promise<void> {
+  await commands.logFrontendError(message, stack ?? null);
+}

@@ -65,6 +65,7 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
     setQueryDraft(tab.id, sql);
   }, [tab.id, sql]);
   const handleCancelRef = useRef<() => void>(() => {});
+  const handleExecuteRef = useRef<() => void>(() => {});
   const dockRef = useRef<DockLayoutHandle>(null);
 
   useEffect(() => {
@@ -76,13 +77,20 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const isSaveShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s";
-      if (isSaveShortcut) {
+      const isMod = event.metaKey || event.ctrlKey;
+
+      if (isMod && event.key.toLowerCase() === "s") {
         event.preventDefault();
         if (!sqlRef.current.trim()) return;
         setSaveTitle(tab.title);
         setSaveError(null);
         setSaveOpen(true);
+        return;
+      }
+
+      if (isMod && event.key === "Enter") {
+        event.preventDefault();
+        handleExecuteRef.current();
         return;
       }
 
@@ -144,6 +152,7 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
     }
   }
   handleCancelRef.current = handleCancel;
+  handleExecuteRef.current = handleExecute;
 
   async function handleToggleCommitMode(mode: CommitMode) {
     if (mode === commitMode) return;
@@ -339,13 +348,7 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
         ]}
         render={(panel) =>
           panel === "editor" ? (
-            <SqlEditor
-              value={sql}
-              onChange={setSql}
-              onExecute={handleExecute}
-              disabled={running}
-              schema={schema}
-            />
+            <SqlEditor value={sql} onChange={setSql} disabled={running} schema={schema} />
           ) : running ? (
             <RunningQueryOverlay cancelling={cancelling} onCancel={handleCancel} />
           ) : error ? (

@@ -1,36 +1,21 @@
-import { useMemo, useRef } from "react";
-import CodeMirror, { type KeyBinding, keymap } from "@uiw/react-codemirror";
+import { useMemo } from "react";
+import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL, type SQLNamespace } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
 
 interface SqlEditorProps {
   value: string;
   onChange: (value: string) => void;
-  onExecute: () => void;
   disabled?: boolean;
   schema?: SQLNamespace;
 }
 
-export function SqlEditor({ value, onChange, onExecute, disabled, schema }: SqlEditorProps) {
-  const onExecuteRef = useRef(onExecute);
-  onExecuteRef.current = onExecute;
-
+export function SqlEditor({ value, onChange, disabled, schema }: SqlEditorProps) {
   const extensions = useMemo(() => {
-    const executeBinding: KeyBinding[] = [
-      {
-        key: "Mod-Enter",
-        run: () => {
-          onExecuteRef.current();
-          return true;
-        },
-      },
-    ];
     return [
       sql({ dialect: PostgreSQL, schema, upperCaseKeywords: true }),
-      keymap.of(executeBinding),
       EditorView.lineWrapping,
     ];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema]);
 
   return (

@@ -11,7 +11,7 @@ use super::models::{
     RawQueryResult, SavedQuery,
 };
 
-pub const PAGE_SIZE: u64 = 1000;
+pub const PAGE_SIZE: u64 = 10_000;
 
 pub fn is_read_only_statement(sql: &str) -> bool {
     let trimmed = sql.trim_start().to_lowercase();

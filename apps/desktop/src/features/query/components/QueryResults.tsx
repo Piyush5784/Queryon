@@ -1,7 +1,14 @@
-import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Copy, Loader2 } from "lucide-react";
 
 import { Button } from "@queryon/ui/components/button";
+import { ButtonGroup } from "@queryon/ui/components/button-group";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@queryon/ui/components/dropdown-menu";
 import { ExportButton } from "@/src/components/ExportButton";
 import { DataGrid } from "@/src/features/tables/components/DataGrid";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
@@ -9,7 +16,101 @@ import { fetchQueryResultPage, type QueryResult } from "@/src/features/query/api
 import { QueryResultJsonSheet } from "@/src/features/query/components/QueryResultJsonSheet";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 
-export const QUERY_RESULT_PAGE_SIZE = 1000;
+export const QUERY_RESULT_PAGE_SIZE = 10_000;
+
+function rowsToTsv(columns: string[], rows: unknown[][]): string {
+  const cellToText = (cell: unknown) => {
+    if (cell === null || cell === undefined) return "";
+    const text = typeof cell === "string" ? cell : JSON.stringify(cell);
+    return text.replace(/\t/g, " ").replace(/\r?\n/g, " ");
+  };
+  const lines = [columns.join("\t")];
+  for (const row of rows) {
+    lines.push(row.map(cellToText).join("\t"));
+  }
+  return lines.join("\n");
+}
+
+function rowsToJson(columns: string[], rows: unknown[][]): string {
+  const objects = rows.map((row) => {
+    const obj: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      obj[col] = row[i] ?? null;
+    });
+    return obj;
+  });
+  return JSON.stringify(objects, null, 2);
+}
+
+interface CopyPageButtonProps {
+  columns: string[];
+  rows: unknown[][];
+  disabled?: boolean;
+}
+
+function CopyPageButton({ columns, rows, disabled }: CopyPageButtonProps) {
+  const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [open, setOpen] = useState(false);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function cancelClose() {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  }
+
+  function openOnHover() {
+    cancelClose();
+    setOpen(true);
+  }
+
+  function closeOnHoverOut() {
+    cancelClose();
+    closeTimeoutRef.current = setTimeout(() => setOpen(false), 150);
+  }
+
+  async function copyAs(format: "tsv" | "json") {
+    setCopying(true);
+    try {
+      const text = format === "tsv" ? rowsToTsv(columns, rows) : rowsToJson(columns, rows);
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  return (
+    <ButtonGroup onMouseEnter={openOnHover} onMouseLeave={closeOnHoverOut}>
+      <Button
+        variant="outline"
+        size="xs"
+        className="gap-1.5"
+        disabled={disabled || copying}
+        onClick={() => copyAs("tsv")}
+      >
+        {copying ? <Loader2 className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
+        {copied ? "Copied" : "Copy"}
+      </Button>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger
+          render={
+            <Button variant="outline" size="xs" disabled={disabled || copying}>
+              <ChevronDown className="size-3.5" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" side="top">
+          <DropdownMenuItem onClick={() => copyAs("tsv")}>Copy as raw text (TSV)</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => copyAs("json")}>Copy as JSON</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </ButtonGroup>
+  );
+}
 
 interface QueryResultsProps {
   connectionId: string;
@@ -24,7 +125,6 @@ export function QueryResults({ connectionId, tabId, sql, result }: QueryResultsP
   const [pageRows, setPageRows] = useState(result.kind === "rows" ? result.rows : []);
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setPage(0);
@@ -55,21 +155,6 @@ export function QueryResults({ connectionId, tabId, sql, result }: QueryResultsP
   const totalRowCount = result.totalRowCount;
   const paginated = totalRowCount !== null;
   const totalPages = paginated ? Math.max(1, Math.ceil(totalRowCount / QUERY_RESULT_PAGE_SIZE)) : 1;
-
-  async function handleCopyPage() {
-    if (result.kind !== "rows") return;
-    const columns = result.columns;
-    const objects = pageRows.map((row) => {
-      const obj: Record<string, unknown> = {};
-      columns.forEach((col, i) => {
-        obj[col] = row[i] ?? null;
-      });
-      return obj;
-    });
-    await navigator.clipboard.writeText(JSON.stringify(objects, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  }
 
   async function goToPage(next: number) {
     if (!paginated || next < 0 || next >= totalPages || next === page || pageLoading) return;
@@ -150,16 +235,11 @@ export function QueryResults({ connectionId, tabId, sql, result }: QueryResultsP
           </div>
 
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="xs"
-              className="gap-1.5"
-              onClick={handleCopyPage}
+            <CopyPageButton
+              columns={result.columns}
+              rows={pageRows}
               disabled={pageLoading}
-            >
-              <Copy className="size-3.5" />
-              {copied ? "Copied" : "Copy"}
-            </Button>
+            />
             <ExportButton
               target={{
                 kind: "query",
@@ -180,10 +260,7 @@ export function QueryResults({ connectionId, tabId, sql, result }: QueryResultsP
 
       {!paginated && (
         <div className="flex shrink-0 items-center justify-end gap-1.5 border-t px-3 py-1.5">
-          <Button variant="outline" size="xs" className="gap-1.5" onClick={handleCopyPage}>
-            <Copy className="size-3.5" />
-            {copied ? "Copied" : "Copy"}
-          </Button>
+          <CopyPageButton columns={result.columns} rows={pageRows} />
           <ExportButton
             target={{
               kind: "query",

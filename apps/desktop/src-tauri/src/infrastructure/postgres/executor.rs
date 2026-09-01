@@ -230,6 +230,8 @@ pub async fn execute_query(
         return Ok(RawQueryResult::Affected { row_count: affected });
     }
 
+    let sql = sql.trim().trim_end_matches(';');
+
     match execute_query_page(client, sql, offset, limit).await {
         Ok(result) => Ok(result),
         Err(WrapOrRuntimeError::Runtime(e)) => Err(AppError::new(describe_pg_error(&e))),

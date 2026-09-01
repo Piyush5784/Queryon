@@ -90,6 +90,7 @@ export const commands = {
 	docInsertDocument: (connectionId: string, database: string, collection: string, document: string) => typedError<string, AppError>(__TAURI_INVOKE("doc_insert_document", { connectionId, database, collection, document })),
 	docUpdateDocument: (connectionId: string, database: string, collection: string, id: string, document: string) => typedError<null, AppError>(__TAURI_INVOKE("doc_update_document", { connectionId, database, collection, id, document })),
 	docDeleteDocument: (connectionId: string, database: string, collection: string, id: string) => typedError<null, AppError>(__TAURI_INVOKE("doc_delete_document", { connectionId, database, collection, id })),
+	logFrontendError: (message: string, stack: string | null) => __TAURI_INVOKE<void>("log_frontend_error", { message, stack }),
 };
 
 /* Types */

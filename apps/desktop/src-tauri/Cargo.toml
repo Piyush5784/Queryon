@@ -43,6 +43,7 @@ rust_decimal = "1"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-log = "2"
 russh = "0.63.0"
 tiberius = { version = "0.12.3", default-features = false, features = ["tds73", "rustls", "chrono"] }
 deadpool = { version = "0.13.0", features = ["rt_tokio_1"] }

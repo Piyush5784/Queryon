@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Copy } from "lucide-react";
 
 import { Button } from "@queryon/ui/components/button";
@@ -29,6 +29,25 @@ function rowsToJson(columns: string[], rows: unknown[][]): string {
 
 export function CopyButton({ columns, rows, selectedRowIndices, disabled }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function cancelClose() {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  }
+
+  function openOnHover() {
+    cancelClose();
+    setOpen(true);
+  }
+
+  function closeOnHoverOut() {
+    cancelClose();
+    closeTimeoutRef.current = setTimeout(() => setOpen(false), 150);
+  }
 
   async function copy(text: string) {
     await navigator.clipboard.writeText(text);
@@ -49,23 +68,25 @@ export function CopyButton({ columns, rows, selectedRowIndices, disabled }: Copy
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="outline" size="xs" className="gap-1.5" disabled={disabled}>
-            <Copy className="size-3.5" />
-            {copied ? "Copied" : "Copy"}
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="end" side="top">
-        <DropdownMenuItem disabled={selectedRowIndices.size === 0} onClick={handleCopySelected}>
-          Copy Selected Rows as JSON
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleCopyPage}>
-          Copy Page ({rows.length} rows) as JSON
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger
+          render={
+            <Button variant="outline" size="xs" onMouseEnter={openOnHover} onMouseLeave={closeOnHoverOut} className="gap-1.5 hover:border-none" disabled={disabled}>
+              <Copy className="size-3.5" />
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" side="top">
+          <DropdownMenuItem disabled={selectedRowIndices.size === 0} onClick={handleCopySelected}>
+            Copy Selected Rows as JSON
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleCopyPage}>
+            Copy Page ({rows.length} rows) as JSON
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
