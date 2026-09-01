@@ -1,15 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Copy, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 
 import { Button } from "@queryon/ui/components/button";
-import { ButtonGroup } from "@queryon/ui/components/button-group";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@queryon/ui/components/dropdown-menu";
 import { ExportButton } from "@/src/components/ExportButton";
+import { SplitCopyButton } from "@/src/components/SplitCopyButton";
 import { DataGrid } from "@/src/features/tables/components/DataGrid";
 import type { JsonValue } from "@/src/features/tables/components/JsonViewer/types";
 import { fetchQueryResultPage, type QueryResult } from "@/src/features/query/api";
@@ -49,66 +43,23 @@ interface CopyPageButtonProps {
 }
 
 function CopyPageButton({ columns, rows, disabled }: CopyPageButtonProps) {
-  const [copied, setCopied] = useState(false);
-  const [copying, setCopying] = useState(false);
-  const [open, setOpen] = useState(false);
-  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function cancelClose() {
-    if (closeTimeoutRef.current) {
-      clearTimeout(closeTimeoutRef.current);
-      closeTimeoutRef.current = null;
-    }
+  async function copyTsv() {
+    await navigator.clipboard.writeText(rowsToTsv(columns, rows));
   }
 
-  function openOnHover() {
-    cancelClose();
-    setOpen(true);
-  }
-
-  function closeOnHoverOut() {
-    cancelClose();
-    closeTimeoutRef.current = setTimeout(() => setOpen(false), 150);
-  }
-
-  async function copyAs(format: "tsv" | "json") {
-    setCopying(true);
-    try {
-      const text = format === "tsv" ? rowsToTsv(columns, rows) : rowsToJson(columns, rows);
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } finally {
-      setCopying(false);
-    }
+  async function copyJson() {
+    await navigator.clipboard.writeText(rowsToJson(columns, rows));
   }
 
   return (
-    <ButtonGroup onMouseEnter={openOnHover} onMouseLeave={closeOnHoverOut}>
-      <Button
-        variant="outline"
-        size="xs"
-        className="gap-1.5"
-        disabled={disabled || copying}
-        onClick={() => copyAs("tsv")}
-      >
-        {copying ? <Loader2 className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
-        {copied ? "Copied" : "Copy"}
-      </Button>
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger
-          render={
-            <Button variant="outline" size="xs" disabled={disabled || copying}>
-              <ChevronDown className="size-3.5" />
-            </Button>
-          }
-        />
-        <DropdownMenuContent align="end" side="top">
-          <DropdownMenuItem onClick={() => copyAs("tsv")}>Copy as raw text (TSV)</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => copyAs("json")}>Copy as JSON</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </ButtonGroup>
+    <SplitCopyButton
+      disabled={disabled}
+      onDefaultClick={copyTsv}
+      options={[
+        { label: "Copy as raw text (TSV)", onClick: copyTsv },
+        { label: "Copy as JSON", onClick: copyJson },
+      ]}
+    />
   );
 }
 

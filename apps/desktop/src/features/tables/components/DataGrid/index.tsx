@@ -28,6 +28,7 @@ export interface RowEdit {
 interface DataGridProps {
   columns: string[];
   rows: CellValue[][];
+  columnTypes?: Map<string, string>;
   onOpenJsonCell?: (
     columnName: string,
     value: JsonValue,
@@ -67,6 +68,27 @@ function cellDisplayString(value: CellValue): string {
   if (typeof value === "object") return JSON.stringify(value);
   if (typeof value === "boolean") return value ? "true" : "false";
   return String(value);
+}
+
+const DATE_TYPE_PATTERN = /^(timestamp|date|time)/i;
+
+const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "medium",
+});
+const dateOnlyFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" });
+
+function formatTemporalValue(dataType: string, raw: string): string {
+  const normalized = dataType.toLowerCase();
+  const isTimeOnly = normalized.startsWith("time") && !normalized.includes("timestamp");
+  if (isTimeOnly) return raw;
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  if (normalized.startsWith("date") && !normalized.includes("time")) {
+    return dateOnlyFormatter.format(parsed);
+  }
+  return dateTimeFormatter.format(parsed);
 }
 
 function estimateColumnWidth(columnName: string, sampleRows: CellValue[][], columnIndex: number): number {
@@ -156,6 +178,7 @@ function useGlideTheme(): Partial<Theme> {
 export function DataGrid({
   columns,
   rows,
+  columnTypes,
   onOpenJsonCell,
   editable,
   editingRowIndex = null,
@@ -256,10 +279,14 @@ export function DataGrid({
       const activeRow = editingRowIndex ?? pendingEdit?.rowIndex ?? null;
       const canEditCell = !!editable && !saving && (activeRow === null || activeRow === row);
 
+      const dataType = columnTypes?.get(columnName);
+      const isTemporal = !isNull && !isBoolean && !!dataType && DATE_TYPE_PATTERN.test(dataType);
+      const shownText = isNull ? "NULL" : isTemporal ? formatTemporalValue(dataType, display) : display;
+
       return {
         kind: GridCellKind.Text,
         data: display,
-        displayData: isNull ? "NULL" : display,
+        displayData: shownText,
         allowOverlay: canEditCell,
         readonly: !canEditCell,
         themeOverride: isNull
@@ -274,7 +301,7 @@ export function DataGrid({
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [rows, columns, pendingEdit, editingRowIndex, editable, saving, theme, visibleColumnIndices]
+    [rows, columns, columnTypes, pendingEdit, editingRowIndex, editable, saving, theme, visibleColumnIndices]
   );
 
   function handleCellEdited([gridCol, row]: Item, newCell: EditableGridCell) {

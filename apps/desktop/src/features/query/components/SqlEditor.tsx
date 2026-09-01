@@ -24,6 +24,7 @@ export function SqlEditor({ value, onChange, disabled, schema }: SqlEditorProps)
       onChange={onChange}
       theme="dark"
       editable={!disabled}
+      autoFocus
       height="100%"
       extensions={extensions}
       basicSetup={{

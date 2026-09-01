@@ -18,7 +18,6 @@ import { DockLayout, type DockLayoutHandle } from "@/src/components/DockLayout";
 import {
   beginTransaction,
   cancelQuery,
-  clearQueryResultCache,
   commitTransaction,
   executeQuery,
   rollbackTransaction,
@@ -29,6 +28,7 @@ import { QueryResults } from "@/src/features/query/components/QueryResults";
 import { RunningQueryOverlay } from "@/src/features/query/components/RunningQueryOverlay";
 import { SqlEditor } from "@/src/features/query/components/SqlEditor";
 import { getQueryDraft, setQueryDraft } from "@/src/features/query/queryDrafts";
+import { getCachedQueryResult, setCachedQueryResult } from "@/src/features/query/queryResultCache";
 import { markTabIdle, markTabRunning } from "@/src/features/query/runningTabs";
 import type { QueryTab } from "@/src/features/query/types";
 import { useSchemaNamespace } from "@/src/features/query/useSchemaNamespace";
@@ -44,8 +44,10 @@ interface QueryTabViewProps {
 export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
   const [sql, setSql] = useState(() => getQueryDraft(tab.id) ?? tab.initialSql ?? "");
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<QueryResult | null>(null);
-  const [executedSql, setExecutedSql] = useState<string | null>(null);
+  const [result, setResult] = useState<QueryResult | null>(() => getCachedQueryResult(tab.id)?.result ?? null);
+  const [executedSql, setExecutedSql] = useState<string | null>(
+    () => getCachedQueryResult(tab.id)?.executedSql ?? null
+  );
   const [error, setError] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState(tab.title);
@@ -56,8 +58,6 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
   const [transactionBusy, setTransactionBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const schema = useSchemaNamespace(tab.connectionId);
-  const activeTabIdRef = useRef(tab.id);
-  activeTabIdRef.current = tab.id;
   const sqlRef = useRef(sql);
   sqlRef.current = sql;
 
@@ -68,12 +68,6 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
   const handleExecuteRef = useRef<() => void>(() => {});
   const dockRef = useRef<DockLayoutHandle>(null);
 
-  useEffect(() => {
-    return () => {
-      markTabIdle(activeTabIdRef.current);
-      clearQueryResultCache(activeTabIdRef.current).catch(() => {});
-    };
-  }, []);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -114,6 +108,7 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
       const res = await executeQuery(tab.connectionId, sql, tab.id);
       setResult(res);
       setExecutedSql(sql);
+      setCachedQueryResult(tab.id, res, sql);
       if (res.kind === "rows") {
         const rowCount = res.totalRowCount ?? res.rows.length;
         toast.add({
