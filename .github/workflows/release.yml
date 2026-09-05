@@ -103,7 +103,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob globstar
 
           latest_suffix=""
           case "$MATRIX_ARGS" in
@@ -112,9 +111,11 @@ jobs:
           esac
 
           upload() {
-            local ext="$1"
-            shift
-            for f in "$@"; do
+            local bundle_dir="$1"
+            local ext="$2"
+            local dir="apps/desktop/src-tauri/target"
+            [[ -d "$dir" ]] || return 0
+            find "$dir" -type f -path "*/bundle/${bundle_dir}/*.${ext}" | while IFS= read -r f; do
               echo "Uploading $f"
               pnpm dlx wrangler r2 object put \
                 "queryon-releases/${GITHUB_REF_NAME}/$(basename "$f")" \
@@ -125,9 +126,9 @@ jobs:
             done
           }
 
-          upload deb apps/desktop/src-tauri/target/**/bundle/deb/*.deb
-          upload rpm apps/desktop/src-tauri/target/**/bundle/rpm/*.rpm
-          upload msi apps/desktop/src-tauri/target/**/bundle/msi/*.msi
-          upload exe apps/desktop/src-tauri/target/**/bundle/nsis/*.exe
-          upload dmg apps/desktop/src-tauri/target/**/bundle/dmg/*.dmg
+          upload deb deb
+          upload rpm rpm
+          upload msi msi
+          upload nsis exe
+          upload dmg dmg
           exit 0
