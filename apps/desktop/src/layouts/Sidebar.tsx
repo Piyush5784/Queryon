@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Database, Moon, PanelTopClose, Plus, Sun } from "lucide-react";
+import { Database, DownloadCloud, Moon, PanelTopClose, Plus, Sun } from "lucide-react";
 
 import { Button } from "@queryon/ui/components/button";
 import { TooltipButton } from "@/src/components/TooltipButton";
+import { checkForUpdates } from "@/src/components/UpdateChecker";
 import {
   Sidebar as SidebarPrimitive,
   SidebarContent,
@@ -131,7 +132,17 @@ export function Sidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="px-2 py-2">
+      <SidebarFooter className="gap-1.5 px-2 py-2">
+        <TooltipButton
+          tooltip="Check for updates"
+          variant="ghost"
+          size="sm"
+          className="justify-start gap-1.5"
+          onClick={checkForUpdates}
+        >
+          <DownloadCloud className="size-3.5" />
+          <span className="group-data-[collapsible=icon]:hidden">Check for updates</span>
+        </TooltipButton>
         <div className="flex items-center gap-1 rounded-lg border p-0.5 group-data-[collapsible=icon]:flex-col">
           <Button
             variant={theme === "light" ? "secondary" : "ghost"}

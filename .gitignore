@@ -11,6 +11,7 @@ dist-ssr/
 **/src-tauri/gen/
 .open-next
 .wrangler
+temp.txt
 
 # Environment / secrets — never commit these
 .env

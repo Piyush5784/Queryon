@@ -53,7 +53,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFBQUQxQUVFNzQwQkYwRjUKUldUMThBdDA3aHF0R25WRHhkdTVDODhRdEM1L21KMHdBU21ZV1Y1c0M1TkErbmdER3pJbDJNUXgK",
       "endpoints": [
-        "https://github.com/Piyush5784/Queryon/releases/latest/download/latest.json"
+        "https://pub-16a98e553e3d4f7db28008ca9262706f.r2.dev/latest/latest.json"
       ]
     }
   }

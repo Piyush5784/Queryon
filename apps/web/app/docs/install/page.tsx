@@ -1,10 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Clock, Download, Terminal } from "lucide-react"
+import { Download, Terminal } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@queryon/ui/components/alert"
-import { Badge } from "@queryon/ui/components/badge"
 import { buttonVariants } from "@queryon/ui/components/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@queryon/ui/components/card"
 import { Kbd } from "@queryon/ui/components/kbd"
@@ -14,6 +13,10 @@ import { cn } from "@queryon/ui/lib/utils"
 const R2_BASE_URL = "https://pub-16a98e553e3d4f7db28008ca9262706f.r2.dev"
 const DEB_URL = `${R2_BASE_URL}/latest/queryon.deb`
 const RPM_URL = `${R2_BASE_URL}/latest/queryon.rpm`
+const MSI_URL = `${R2_BASE_URL}/latest/queryon.msi`
+const EXE_URL = `${R2_BASE_URL}/latest/queryon.exe`
+const DMG_ARM64_URL = `${R2_BASE_URL}/latest/queryon-arm64.dmg`
+const DMG_X86_64_URL = `${R2_BASE_URL}/latest/queryon-x86_64.dmg`
 
 type Os = "linux" | "windows" | "macos"
 
@@ -52,10 +55,10 @@ export default function InstallPage() {
           <LinuxInstall />
         </TabsContent>
         <TabsContent value="windows" className="mt-6">
-          <ComingSoon platform="Windows" />
+          <WindowsInstall />
         </TabsContent>
         <TabsContent value="macos" className="mt-6">
-          <ComingSoon platform="macOS" />
+          <MacInstall />
         </TabsContent>
       </Tabs>
     </div>
@@ -131,18 +134,90 @@ function LinuxInstall() {
   )
 }
 
-function ComingSoon({ platform }: { platform: string }) {
+function WindowsInstall() {
   return (
-    <Card>
-      <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-        <Badge variant="outline" className="gap-1.5">
-          <Clock className="size-3" />
-          In progress
-        </Badge>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          {platform} builds aren&apos;t published yet. Check back soon.
-        </p>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Installer (recommended)</CardTitle>
+            <CardDescription>.msi package</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <a href={MSI_URL} className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
+              <Download className="size-3.5" />
+              Download .msi
+            </a>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Setup executable</CardTitle>
+            <CardDescription>.exe installer</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <a href={EXE_URL} className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
+              <Download className="size-3.5" />
+              Download .exe
+            </a>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Alert>
+        <Terminal className="size-4" />
+        <AlertTitle>First launch</AlertTitle>
+        <AlertDescription>
+          Windows SmartScreen may warn about an unrecognized app. Click{" "}
+          <Kbd>More info</Kbd> then <Kbd>Run anyway</Kbd> to continue — this is expected
+          for apps without a paid code-signing certificate.
+        </AlertDescription>
+      </Alert>
+    </div>
+  )
+}
+
+function MacInstall() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Apple Silicon</CardTitle>
+            <CardDescription>M1/M2/M3/M4 Macs</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <a href={DMG_ARM64_URL} className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
+              <Download className="size-3.5" />
+              Download .dmg
+            </a>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Intel</CardTitle>
+            <CardDescription>Intel-based Macs</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <a href={DMG_X86_64_URL} className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
+              <Download className="size-3.5" />
+              Download .dmg
+            </a>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Alert>
+        <Terminal className="size-4" />
+        <AlertTitle>First launch</AlertTitle>
+        <AlertDescription>
+          macOS Gatekeeper may block the app since it isn&apos;t notarized yet. Right-click
+          the app in Finder, choose <Kbd>Open</Kbd>, then confirm <Kbd>Open</Kbd> in the
+          dialog that appears.
+        </AlertDescription>
+      </Alert>
+    </div>
   )
 }
