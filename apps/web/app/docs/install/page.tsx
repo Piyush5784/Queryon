@@ -12,8 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@queryon/ui/components
 import { cn } from "@queryon/ui/lib/utils"
 
 const R2_BASE_URL = "https://pub-16a98e553e3d4f7db28008ca9262706f.r2.dev"
-const DEB_URL = `${R2_BASE_URL}/Queryon_0.2.1_amd64.deb`
-const RPM_URL = `${R2_BASE_URL}/Queryon-0.2.1-1.x86_64.rpm`
+const DEB_URL = `${R2_BASE_URL}/latest/queryon.deb`
+const RPM_URL = `${R2_BASE_URL}/latest/queryon.rpm`
 
 type Os = "linux" | "windows" | "macos"
 

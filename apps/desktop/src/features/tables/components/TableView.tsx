@@ -41,6 +41,7 @@ import {
   countTableRows,
   deleteRows,
   fetchTableRows,
+  getTableColumns,
   insertRow,
   updateCellText,
   type CellValue,
@@ -94,6 +95,7 @@ export function TableView({ tab }: TableViewProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const [totalRowCount, setTotalRowCount] = useState<number | null>(null);
+  const [columnTypes, setColumnTypes] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     setPage(0);
@@ -142,6 +144,23 @@ export function TableView({ tab }: TableViewProps) {
       cancelled = true;
     };
   }, [tab.connectionId, tab.schema, tab.table, filters]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getTableColumns(tab.connectionId, tab.schema, tab.table)
+      .then((cols) => {
+        if (cancelled) return;
+        setColumnTypes(new Map(cols.map((col) => [col.name, col.dataType])));
+      })
+      .catch(() => {
+        if (!cancelled) setColumnTypes(new Map());
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab.connectionId, tab.schema, tab.table]);
 
   function resetPendingState() {
     setPendingEdit(null);
@@ -525,6 +544,7 @@ export function TableView({ tab }: TableViewProps) {
           <DataGrid
             columns={result.columns}
             rows={isInsertingRow ? [result.columns.map(() => null), ...result.rows] : result.rows}
+            columnTypes={columnTypes}
             editable
             pendingEdit={pendingEdit}
             onPendingEditChange={(edit) => {

@@ -25,8 +25,8 @@ export interface DockLayoutHandle {
   applyLayout: (preset: DockLayoutPreset) => void;
 }
 
-function DockPanelContent({ params }: IDockviewPanelProps<{ render: () => React.ReactNode }>) {
-  return <div className="h-full min-h-0 overflow-hidden">{params.render()}</div>;
+function DockPanelContent({ params }: IDockviewPanelProps<{ render?: () => React.ReactNode }>) {
+  return <div className="h-full min-h-0 overflow-hidden">{params.render?.()}</div>;
 }
 
 function DockLayoutInner<T>(
@@ -60,10 +60,21 @@ function DockLayoutInner<T>(
     if (savedLayout) {
       try {
         event.api.fromJSON(JSON.parse(savedLayout));
+        const restoredPanels = new Set(event.api.panels.map((panel) => panel.id));
+        const knowsAllPanels = panelsRef.current.every((panel) => restoredPanels.has(panel.id));
+        if (!knowsAllPanels) {
+          throw new Error("saved layout is missing a panel this render defines");
+        }
+        for (const panel of panelsRef.current) {
+          event.api.getPanel(panel.id)?.api.updateParameters({
+            render: () => renderRef.current(panel.params),
+          });
+        }
         setReady(true);
         return;
       } catch {
         localStorage.removeItem(storageKey);
+        event.api.clear();
       }
     }
 

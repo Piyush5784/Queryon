@@ -13,6 +13,7 @@ import {
   Plug,
   PlugZap,
   Plus,
+  RefreshCw,
   Star,
   Table2,
   Trash2,
@@ -68,6 +69,7 @@ import {
   type SavedQuery,
 } from "@/src/features/query/api";
 import { listTables, type TableRef } from "@/src/features/tables/api";
+import { useHoverOpen } from "@/src/hooks/use-hover-open";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 
 interface ConnectionTreeItemProps {
@@ -115,6 +117,7 @@ export function ConnectionTreeItem({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [tables, setTables] = useState<TableRef[] | null>(null);
   const [defaultDatabase, setDefaultDatabase] = useState<string | null>(null);
+  const connectionMenu = useHoverOpen();
 
   const isDocument = isDocumentEngine(engineOf(connection));
 
@@ -202,15 +205,26 @@ export function ConnectionTreeItem({
         )}
       </SidebarMenuButton>
 
-      <DropdownMenu>
+      <DropdownMenu open={connectionMenu.open} onOpenChange={connectionMenu.setOpen}>
         <DropdownMenuTrigger
           render={
-            <SidebarMenuAction showOnHover title="More options">
+            <SidebarMenuAction
+              showOnHover
+              title="More options"
+              onMouseEnter={connectionMenu.onMouseEnter}
+              onMouseLeave={connectionMenu.onMouseLeave}
+            >
               <MoreHorizontal />
             </SidebarMenuAction>
           }
         />
-        <DropdownMenuContent align="start" side="right" className={"min-w-37.5"}>
+        <DropdownMenuContent
+          align="start"
+          side="right"
+          className={"min-w-37.5"}
+          onMouseEnter={connectionMenu.onMouseEnter}
+          onMouseLeave={connectionMenu.onMouseLeave}
+        >
           <DropdownMenuItem onClick={() => setRenameOpen(true)}>
             <Pencil className="size-3.5" />
             Rename
@@ -223,6 +237,12 @@ export function ConnectionTreeItem({
           </DropdownMenuItem>
           {isConnected && (
             <>
+              {!isDocument && (
+                <DropdownMenuItem onClick={refetchTables}>
+                  <RefreshCw className="size-3.5" />
+                  Refresh
+                </DropdownMenuItem>
+              )}
               {!isDocument && (
                 <DropdownMenuItem onClick={() => setExportOpen(true)}>
                   <Download className="size-3.5" />

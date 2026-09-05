@@ -9,8 +9,9 @@ import {
 import { ConnectionDialog } from "@/src/features/connections/components/ConnectionDialog";
 import { engineOf, isDocumentEngine, type ConnectionProfile, type SavedConnectionProfile } from "@/src/features/connections/types";
 import { collectionTabId, databaseTabId, docConnectSaved, docDisconnect } from "@/src/features/documents/api";
-import type { SavedQuery } from "@/src/features/query/api";
+import { clearQueryResultCache, type SavedQuery } from "@/src/features/query/api";
 import { clearQueryDraft } from "@/src/features/query/queryDrafts";
+import { clearCachedQueryResult } from "@/src/features/query/queryResultCache";
 import { isTabRunning } from "@/src/features/query/runningTabs";
 import { createQueryTabId } from "@/src/features/query/types";
 import { tableTabId } from "@/src/features/tables/types";
@@ -247,6 +248,8 @@ function App() {
 
   function closeTab(id: string) {
     clearQueryDraft(id);
+    clearCachedQueryResult(id);
+    clearQueryResultCache(id).catch(() => {});
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== id);
       if (activeTabId === id) {

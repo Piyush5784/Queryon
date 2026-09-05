@@ -10,7 +10,26 @@ permissions:
   contents: write
 
 jobs:
+  verify-r2-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Cloudflare API token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          curl -sf -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" | tee /tmp/verify.json
+          echo
+          if grep -q '"success":true' /tmp/verify.json; then
+            echo "Token is valid"
+          else
+            echo "Token verification failed"
+            exit 1
+          fi
+
   release:
+    needs: verify-r2-token
     strategy:
       fail-fast: false
       matrix:
@@ -75,3 +94,40 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Upload installers to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MATRIX_ARGS: ${{ matrix.args }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob globstar
+
+          latest_suffix=""
+          case "$MATRIX_ARGS" in
+            *aarch64-apple-darwin*) latest_suffix="-arm64" ;;
+            *x86_64-apple-darwin*) latest_suffix="-x86_64" ;;
+          esac
+
+          upload() {
+            local ext="$1"
+            shift
+            for f in "$@"; do
+              echo "Uploading $f"
+              pnpm dlx wrangler r2 object put \
+                "queryon-releases/${GITHUB_REF_NAME}/$(basename "$f")" \
+                --file "$f" --remote
+              pnpm dlx wrangler r2 object put \
+                "queryon-releases/latest/queryon${latest_suffix}.${ext}" \
+                --file "$f" --remote
+            done
+          }
+
+          upload deb apps/desktop/src-tauri/target/**/bundle/deb/*.deb
+          upload rpm apps/desktop/src-tauri/target/**/bundle/rpm/*.rpm
+          upload msi apps/desktop/src-tauri/target/**/bundle/msi/*.msi
+          upload exe apps/desktop/src-tauri/target/**/bundle/nsis/*.exe
+          upload dmg apps/desktop/src-tauri/target/**/bundle/dmg/*.dmg
+          exit 0
