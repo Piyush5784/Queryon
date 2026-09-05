@@ -7,7 +7,10 @@
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm build",
-    "beforeBundleCommand": "bash scripts/strip-duckdb-lib.sh",
+    "beforeBundleCommand": {
+      "script": "bash scripts/strip-duckdb-lib.sh",
+      "cwd": "."
+    },
     "frontendDist": "../dist"
   },
   "app": {
