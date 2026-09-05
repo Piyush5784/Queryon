@@ -40,7 +40,7 @@ jobs:
             args: ""
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
-          - platform: macos-latest
+          - platform: macos-15-intel
             args: "--target x86_64-apple-darwin"
 
     runs-on: ${{ matrix.platform }}
@@ -51,7 +51,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || matrix.platform == 'macos-15-intel' && 'x86_64-apple-darwin' || '' }}
 
       - name: Cache Rust dependencies and build artifacts
         uses: Swatinem/rust-cache@v2
@@ -132,3 +132,35 @@ jobs:
           upload nsis exe
           upload dmg dmg
           exit 0
+
+  upload-updater-manifest:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+
+      - name: Fetch latest.json from the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          asset_url=$(gh api "repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" \
+            --jq '.assets[] | select(.name == "latest.json") | .url')
+          if [[ -z "$asset_url" ]]; then
+            echo "latest.json not found on the release yet"
+            exit 1
+          fi
+          curl -sL -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/octet-stream" \
+            "$asset_url" -o latest.json
+          cat latest.json
+
+      - name: Upload latest.json to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm dlx wrangler r2 object put "queryon-releases/latest/latest.json" \
+            --file latest.json --remote
