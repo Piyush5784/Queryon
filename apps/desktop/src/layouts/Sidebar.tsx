@@ -1,9 +1,14 @@
 import { useState } from "react";
-import { Database, DownloadCloud, Moon, PanelTopClose, Plus, Sun } from "lucide-react";
+import { Database, DownloadCloud, Moon, PanelTopClose, Plus, RotateCw, Sun } from "lucide-react";
 
 import { Button } from "@queryon/ui/components/button";
 import { TooltipButton } from "@/src/components/TooltipButton";
-import { checkForUpdates } from "@/src/components/UpdateChecker";
+import {
+  checkForUpdates,
+  restartToUpdate,
+  useUpdaterStatus,
+  type UpdaterStatus,
+} from "@/src/components/UpdateChecker";
 import {
   Sidebar as SidebarPrimitive,
   SidebarContent,
@@ -39,6 +44,31 @@ interface SidebarProps {
   onConnectionRenamed: () => void;
 }
 
+interface UpdaterButtonProps {
+  label: string;
+  icon: typeof DownloadCloud;
+  disabled: boolean;
+  onClick: () => void;
+  tooltip: string;
+}
+
+function getUpdaterButton(status: UpdaterStatus): UpdaterButtonProps {
+  switch (status.kind) {
+    case "checking":
+      return { label: "Checking for updates…", icon: DownloadCloud, disabled: true, onClick: checkForUpdates, tooltip: "Checking for updates" };
+    case "up-to-date":
+      return { label: "Up to date", icon: DownloadCloud, disabled: true, onClick: checkForUpdates, tooltip: "You're on the latest version" };
+    case "updating":
+      return { label: `Updating… ${status.progress}%`, icon: DownloadCloud, disabled: true, onClick: checkForUpdates, tooltip: "Downloading and installing the update" };
+    case "ready":
+      return { label: "Restart to update", icon: RotateCw, disabled: false, onClick: restartToUpdate, tooltip: "Restart to apply the update" };
+    case "error":
+      return { label: "Failed to update", icon: DownloadCloud, disabled: false, onClick: checkForUpdates, tooltip: status.message };
+    default:
+      return { label: "Check for updates", icon: DownloadCloud, disabled: false, onClick: checkForUpdates, tooltip: "Check for updates" };
+  }
+}
+
 export function Sidebar({
   connections,
   connectedIds,
@@ -59,6 +89,8 @@ export function Sidebar({
 }: SidebarProps) {
   const { theme, setTheme } = useTheme();
   const [collapseSignal, setCollapseSignal] = useState(0);
+  const updaterStatus = useUpdaterStatus();
+  const updaterButton = getUpdaterButton(updaterStatus);
 
   return (
     <SidebarPrimitive collapsible="icon">
@@ -134,14 +166,15 @@ export function Sidebar({
 
       <SidebarFooter className="gap-1.5 px-2 py-2">
         <TooltipButton
-          tooltip="Check for updates"
+          tooltip={updaterButton.tooltip}
           variant="ghost"
           size="sm"
           className="justify-start gap-1.5"
-          onClick={checkForUpdates}
+          disabled={updaterButton.disabled}
+          onClick={updaterButton.onClick}
         >
-          <DownloadCloud className="size-3.5" />
-          <span className="group-data-[collapsible=icon]:hidden">Check for updates</span>
+          <updaterButton.icon className="size-3.5" />
+          <span className="group-data-[collapsible=icon]:hidden">{updaterButton.label}</span>
         </TooltipButton>
         <div className="flex items-center gap-1 rounded-lg border p-0.5 group-data-[collapsible=icon]:flex-col">
           <Button
