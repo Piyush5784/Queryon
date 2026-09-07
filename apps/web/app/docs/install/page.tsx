@@ -24,6 +24,9 @@ async function getLatestReleaseAssets(): Promise<ReleaseAssetUrls> {
   try {
     const headers: Record<string, string> = { Accept: "application/vnd.github+json" }
     const token = process.env.GITHUB_RELEASES_TOKEN
+    console.error(
+      `getLatestReleaseAssets: token present=${!!token} length=${token?.length ?? 0} prefix=${token?.slice(0, 4) ?? "n/a"}`
+    )
     if (token) {
       headers.Authorization = `Bearer ${token}`
     }
