@@ -33,10 +33,12 @@ async function getLatestReleaseAssets(): Promise<ReleaseAssetUrls> {
       cache: "no-store",
     })
     if (!res.ok) {
+      const body = await res.text()
       console.error(
         `getLatestReleaseAssets: GitHub API returned ${res.status} ${res.statusText}`,
-        res.headers.get("x-ratelimit-remaining") &&
-          `(rate limit remaining: ${res.headers.get("x-ratelimit-remaining")})`
+        `body=${body.slice(0, 500)}`,
+        `ratelimit-remaining=${res.headers.get("x-ratelimit-remaining")}`,
+        `retry-after=${res.headers.get("retry-after")}`
       )
       return fallback
     }
