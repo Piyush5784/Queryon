@@ -34,13 +34,12 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || matrix.platform == 'macos-15-intel' && 'x86_64-apple-darwin' || '' }}
 
-      - name: Cache Rust dependencies and build artifacts
+      - name: Cache Rust dependencies (registry only, not target/)
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
           key: ${{ matrix.platform }}-${{ matrix.args }}
-          cache-directories: |
-            !apps/desktop/src-tauri/target/**/duckdb-download
+          cache-targets: false
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-latest'
