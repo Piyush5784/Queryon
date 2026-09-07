@@ -22,7 +22,10 @@ async function getLatestReleaseAssets(): Promise<ReleaseAssetUrls> {
   }
 
   try {
-    const headers: Record<string, string> = { Accept: "application/vnd.github+json" }
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "queryon-web",
+    }
     const token = process.env.GITHUB_RELEASES_TOKEN
     if (token) {
       headers.Authorization = `Bearer ${token}`
