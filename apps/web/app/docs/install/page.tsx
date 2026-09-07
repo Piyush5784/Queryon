@@ -1,5 +1,7 @@
 import { InstallTabs, type ReleaseAssetUrls } from "./InstallTabs"
 
+export const dynamic = "force-dynamic"
+
 const REPO = "Piyush5784/Queryon"
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`
 
@@ -20,11 +22,24 @@ async function getLatestReleaseAssets(): Promise<ReleaseAssetUrls> {
   }
 
   try {
+    const headers: Record<string, string> = { Accept: "application/vnd.github+json" }
+    const token = process.env.GITHUB_RELEASES_TOKEN
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
+    }
+
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-      headers: { Accept: "application/vnd.github+json" },
+      headers,
       next: { revalidate: 3600 },
     })
-    if (!res.ok) return fallback
+    if (!res.ok) {
+      console.error(
+        `getLatestReleaseAssets: GitHub API returned ${res.status} ${res.statusText}`,
+        res.headers.get("x-ratelimit-remaining") &&
+          `(rate limit remaining: ${res.headers.get("x-ratelimit-remaining")})`
+      )
+      return fallback
+    }
 
     const release = (await res.json()) as { assets: GithubReleaseAsset[] }
     const find = (predicate: (name: string) => boolean) =>
@@ -39,7 +54,8 @@ async function getLatestReleaseAssets(): Promise<ReleaseAssetUrls> {
       dmgX86_64: find((name) => name.endsWith(".dmg") && (name.includes("x86_64") || name.includes("x64"))),
       releasesUrl: RELEASES_URL,
     }
-  } catch {
+  } catch (err) {
+    console.error("getLatestReleaseAssets: fetch failed", err)
     return fallback
   }
 }
