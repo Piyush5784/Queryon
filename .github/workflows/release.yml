@@ -17,12 +17,16 @@ jobs:
         include:
           - platform: ubuntu-latest
             args: "--bundles deb,rpm"
+            cache_key: ubuntu
           - platform: windows-latest
             args: ""
+            cache_key: windows
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
+            cache_key: macos-arm64
           - platform: macos-15-intel
             args: "--target x86_64-apple-darwin"
+            cache_key: macos-x86_64
 
     runs-on: ${{ matrix.platform }}
 
@@ -38,7 +42,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
-          key: ${{ matrix.platform }}-${{ matrix.args }}
+          key: ${{ matrix.cache_key }}
           cache-targets: false
 
       - name: Install Linux dependencies
