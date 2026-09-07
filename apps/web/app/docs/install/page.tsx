@@ -24,16 +24,13 @@ async function getLatestReleaseAssets(): Promise<ReleaseAssetUrls> {
   try {
     const headers: Record<string, string> = { Accept: "application/vnd.github+json" }
     const token = process.env.GITHUB_RELEASES_TOKEN
-    console.error(
-      `getLatestReleaseAssets: token present=${!!token} length=${token?.length ?? 0} prefix=${token?.slice(0, 4) ?? "n/a"}`
-    )
     if (token) {
       headers.Authorization = `Bearer ${token}`
     }
 
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
       headers,
-      next: { revalidate: 3600 },
+      cache: "no-store",
     })
     if (!res.ok) {
       console.error(
