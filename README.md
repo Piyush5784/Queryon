@@ -11,7 +11,7 @@ A fast, native desktop app for working with databases, built with React and Taur
 <img width="1717" height="930" alt="image" src="https://github.com/user-attachments/assets/20f52157-44fc-410e-ac66-ef474597482a" />
 
 
-Video Link: https://res.cloudinary.com/dzf9kamfw/video/upload/queryon-demo-1788368408502_c2eeeq.mp4
+Video Link: [Demo Video](https://res.cloudinary.com/dzf9kamfw/video/upload/queryon-demo-1788368408502_c2eeeq.mp4)
 
 
 A pnpm monorepo:
