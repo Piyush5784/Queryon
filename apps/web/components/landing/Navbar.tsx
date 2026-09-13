@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Database, Menu, X } from "lucide-react"
+import { Code2, Database, Menu, X } from "lucide-react"
 import { motion } from "motion/react"
 
 import { buttonVariants } from "@queryon/ui/components/button"
@@ -24,6 +24,8 @@ const NAV_LINKS = [
   { href: "/docs", label: "Docs" },
   { href: "https://queryon.featurebase.app", label: "Feedback", external: true },
 ]
+
+const GITHUB_URL = "https://github.com/Piyush5784/Queryon"
 
 export function Navbar() {
   const [showMenu, setShowMenu] = useState(false)
@@ -62,6 +64,18 @@ export function Navbar() {
         </NavigationMenu>
 
         <div className="flex items-center gap-2">
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="View source on GitHub"
+            className={cn(
+              buttonVariants({ size: "icon-sm", variant: "outline" }),
+              "hidden rounded-full sm:inline-flex"
+            )}
+          >
+            <Code2 className="size-4" />
+          </a>
           <ThemeToggle className="hidden sm:inline-flex" />
           <Link
             href="/docs/install"
@@ -113,6 +127,15 @@ export function Navbar() {
               </Link>
             )
           })}
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setShowMenu(false)}
+            className="rounded-full px-4 py-2 text-center text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          >
+            GitHub
+          </a>
           <Link
             href="/docs/install"
             onClick={() => setShowMenu(false)}

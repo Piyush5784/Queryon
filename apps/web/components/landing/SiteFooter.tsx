@@ -6,6 +6,7 @@ const FOOTER_LINKS = [
   { href: "/examples", label: "Examples" },
   { href: "/docs", label: "Docs" },
   { href: "https://queryon.featurebase.app", label: "Feedback", external: true },
+  { href: "https://github.com/Piyush5784/Queryon", label: "GitHub", external: true },
 ]
 
 export function SiteFooter() {
