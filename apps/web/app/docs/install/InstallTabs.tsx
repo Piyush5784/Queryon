@@ -1,41 +1,56 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { Download, ExternalLink, Terminal } from "lucide-react"
+import { useEffect, useState } from "react";
+import { Download, ExternalLink, Terminal } from "lucide-react";
 
-import { Alert, AlertDescription, AlertTitle } from "@queryon/ui/components/alert"
-import { buttonVariants } from "@queryon/ui/components/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@queryon/ui/components/card"
-import { Kbd } from "@queryon/ui/components/kbd"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@queryon/ui/components/tabs"
-import { cn } from "@queryon/ui/lib/utils"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@queryon/ui/components/alert";
+import { buttonVariants } from "@queryon/ui/components/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@queryon/ui/components/card";
+import { Kbd } from "@queryon/ui/components/kbd";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@queryon/ui/components/tabs";
+import { cn } from "@queryon/ui/lib/utils";
 
 export interface ReleaseAssetUrls {
-  deb: string | null
-  rpm: string | null
-  msi: string | null
-  exe: string | null
-  dmgArm64: string | null
-  dmgX86_64: string | null
-  releasesUrl: string
+  deb: string | null;
+  rpm: string | null;
+  msi: string | null;
+  exe: string | null;
+  dmgArm64: string | null;
+  dmgX86_64: string | null;
+  releasesUrl: string;
 }
 
-type Os = "linux" | "windows" | "macos"
+type Os = "linux" | "windows" | "macos";
 
 function detectOs(): Os {
-  if (typeof navigator === "undefined") return "linux"
-  const platform = navigator.userAgent.toLowerCase()
-  if (platform.includes("win")) return "windows"
-  if (platform.includes("mac")) return "macos"
-  return "linux"
+  if (typeof navigator === "undefined") return "linux";
+  const platform = navigator.userAgent.toLowerCase();
+  if (platform.includes("win")) return "windows";
+  if (platform.includes("mac")) return "macos";
+  return "linux";
 }
 
 export function InstallTabs({ assets }: { assets: ReleaseAssetUrls }) {
-  const [os, setOs] = useState<Os>("linux")
+  const [os, setOs] = useState<Os>("linux");
 
   useEffect(() => {
-    setOs(detectOs())
-  }, [])
+    setOs(detectOs());
+  }, []);
 
   return (
     <Tabs value={os} onValueChange={(value) => setOs(value as Os)}>
@@ -55,23 +70,34 @@ export function InstallTabs({ assets }: { assets: ReleaseAssetUrls }) {
         <MacInstall assets={assets} />
       </TabsContent>
     </Tabs>
-  )
+  );
 }
 
-function DownloadButton({ href, label }: { href: string | null; label: string }) {
+function DownloadButton({
+  href,
+  label,
+}: {
+  href: string | null;
+  label: string;
+}) {
   if (!href) {
     return (
-      <span className={cn(buttonVariants({ size: "sm", variant: "outline" }), "gap-1.5 opacity-60")}>
+      <span
+        className={cn(
+          buttonVariants({ size: "sm", variant: "outline" }),
+          "gap-1.5 opacity-60",
+        )}
+      >
         {label} unavailable
       </span>
-    )
+    );
   }
   return (
     <a href={href} className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
       <Download className="size-3.5" />
       {label}
     </a>
-  )
+  );
 }
 
 function AllReleasesLink({ releasesUrl }: { releasesUrl: string }) {
@@ -83,7 +109,7 @@ function AllReleasesLink({ releasesUrl }: { releasesUrl: string }) {
       View all releases on GitHub
       <ExternalLink className="size-3.5" />
     </a>
-  )
+  );
 }
 
 function LinuxInstall({ assets }: { assets: ReleaseAssetUrls }) {
@@ -118,13 +144,17 @@ function LinuxInstall({ assets }: { assets: ReleaseAssetUrls }) {
         </h2>
         <div className="flex flex-col gap-3">
           <div>
-            <p className="mb-1.5 text-sm text-muted-foreground">Debian / Ubuntu</p>
+            <p className="mb-1.5 text-sm text-muted-foreground">
+              Debian / Ubuntu
+            </p>
             <pre className="overflow-x-auto rounded-lg bg-muted px-4 py-3 text-sm">
               <code>sudo dpkg -i Queryon_*.deb</code>
             </pre>
           </div>
           <div>
-            <p className="mb-1.5 text-sm text-muted-foreground">Fedora / RHEL</p>
+            <p className="mb-1.5 text-sm text-muted-foreground">
+              Fedora / RHEL
+            </p>
             <pre className="overflow-x-auto rounded-lg bg-muted px-4 py-3 text-sm">
               <code>sudo rpm -i Queryon-*.rpm</code>
             </pre>
@@ -136,13 +166,14 @@ function LinuxInstall({ assets }: { assets: ReleaseAssetUrls }) {
         <Terminal className="size-4" />
         <AlertTitle>First launch</AlertTitle>
         <AlertDescription>
-          Find Queryon in your application menu, or run <Kbd>queryon</Kbd> from a terminal.
+          Find Queryon in your application menu, or run <Kbd>queryon</Kbd> from
+          a terminal.
         </AlertDescription>
       </Alert>
 
       <AllReleasesLink releasesUrl={assets.releasesUrl} />
     </div>
-  )
+  );
 }
 
 function WindowsInstall({ assets }: { assets: ReleaseAssetUrls }) {
@@ -175,14 +206,14 @@ function WindowsInstall({ assets }: { assets: ReleaseAssetUrls }) {
         <AlertTitle>First launch</AlertTitle>
         <AlertDescription>
           Windows SmartScreen may warn about an unrecognized app. Click{" "}
-          <Kbd>More info</Kbd> then <Kbd>Run anyway</Kbd> to continue — this is expected
-          for apps without a paid code-signing certificate.
+          <Kbd>More info</Kbd> then <Kbd>Run anyway</Kbd> to continue — this is
+          expected for apps without a paid code-signing certificate.
         </AlertDescription>
       </Alert>
 
       <AllReleasesLink releasesUrl={assets.releasesUrl} />
     </div>
-  )
+  );
 }
 
 function MacInstall({ assets }: { assets: ReleaseAssetUrls }) {
@@ -214,13 +245,13 @@ function MacInstall({ assets }: { assets: ReleaseAssetUrls }) {
         <Terminal className="size-4" />
         <AlertTitle>First launch</AlertTitle>
         <AlertDescription>
-          macOS Gatekeeper may block the app since it isn&apos;t notarized yet. Right-click
-          the app in Finder, choose <Kbd>Open</Kbd>, then confirm <Kbd>Open</Kbd> in the
-          dialog that appears.
+          macOS Gatekeeper may block the app since it isn&apos;t notarized yet.
+          Right-click the app in Finder, choose <Kbd>Open</Kbd>, then confirm{" "}
+          <Kbd>Open</Kbd> in the dialog that appears.
         </AlertDescription>
       </Alert>
 
       <AllReleasesLink releasesUrl={assets.releasesUrl} />
     </div>
-  )
+  );
 }

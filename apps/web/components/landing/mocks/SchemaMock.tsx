@@ -1,4 +1,4 @@
-import { WindowChrome } from "./WindowChrome"
+import { WindowChrome } from "./WindowChrome";
 
 export function SchemaMock() {
   return (
@@ -6,11 +6,15 @@ export function SchemaMock() {
       <div className="space-y-3 p-4 font-mono text-xs">
         <div className="flex items-center gap-2">
           <span className="w-20 shrink-0 text-muted-foreground">name</span>
-          <span className="rounded border bg-muted/40 px-2 py-1">discount_pct</span>
+          <span className="rounded border bg-muted/40 px-2 py-1">
+            discount_pct
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-20 shrink-0 text-muted-foreground">type</span>
-          <span className="rounded border bg-muted/40 px-2 py-1">numeric(5,2)</span>
+          <span className="rounded border bg-muted/40 px-2 py-1">
+            numeric(5,2)
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-20 shrink-0 text-muted-foreground">default</span>
@@ -28,5 +32,5 @@ export function SchemaMock() {
         </div>
       </div>
     </WindowChrome>
-  )
+  );
 }

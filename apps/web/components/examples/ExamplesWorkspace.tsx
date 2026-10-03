@@ -1,44 +1,54 @@
-"use client"
+"use client";
 
-import { useMemo, useState } from "react"
-import { Terminal, X } from "lucide-react"
+import { useMemo, useState } from "react";
+import { Terminal, X } from "lucide-react";
 
-import { cn } from "@queryon/ui/lib/utils"
+import { cn } from "@queryon/ui/lib/utils";
 
-import { WindowChrome } from "../landing/mocks/WindowChrome"
-import { ExamplesDataGrid } from "./ExamplesDataGrid"
-import { QueryTab } from "./QueryTab"
-import { buildOrdersRows, buildProductsRows, buildUsersRows } from "./exampleData"
+import { WindowChrome } from "../landing/mocks/WindowChrome";
+import { ExamplesDataGrid } from "./ExamplesDataGrid";
+import { QueryTab } from "./QueryTab";
+import {
+  buildOrdersRows,
+  buildProductsRows,
+  buildUsersRows,
+} from "./exampleData";
 
 const TABLES = [
   { id: "users", label: "users", rowCount: 10000 },
   { id: "orders", label: "orders", rowCount: 8000 },
   { id: "products", label: "products", rowCount: 2000 },
-]
+];
 
-type TabId = "users" | "orders" | "products" | "query"
+type TabId = "users" | "orders" | "products" | "query";
 
-const TAB_ORDER: TabId[] = ["users", "orders", "products", "query"]
+const TAB_ORDER: TabId[] = ["users", "orders", "products", "query"];
 
 export function ExamplesWorkspace() {
-  const [openTabs, setOpenTabs] = useState<TabId[]>(["users", "query"])
-  const [activeTab, setActiveTab] = useState<TabId>("users")
+  const [openTabs, setOpenTabs] = useState<TabId[]>(["users", "query"]);
+  const [activeTab, setActiveTab] = useState<TabId>("users");
 
-  const usersRows = useMemo(() => buildUsersRows(10000), [])
-  const ordersRows = useMemo(() => buildOrdersRows(8000), [])
-  const productsRows = useMemo(() => buildProductsRows(2000), [])
+  const usersRows = useMemo(() => buildUsersRows(10000), []);
+  const ordersRows = useMemo(() => buildOrdersRows(8000), []);
+  const productsRows = useMemo(() => buildProductsRows(2000), []);
 
   function openTable(id: TabId) {
-    setOpenTabs((prev) => (prev.includes(id) ? prev : [...prev, id].sort((a, b) => TAB_ORDER.indexOf(a) - TAB_ORDER.indexOf(b))))
-    setActiveTab(id)
+    setOpenTabs((prev) =>
+      prev.includes(id)
+        ? prev
+        : [...prev, id].sort(
+            (a, b) => TAB_ORDER.indexOf(a) - TAB_ORDER.indexOf(b),
+          ),
+    );
+    setActiveTab(id);
   }
 
   function closeTab(id: TabId) {
     setOpenTabs((prev) => {
-      const next = prev.filter((tab) => tab !== id)
-      if (activeTab === id) setActiveTab(next[next.length - 1] ?? "users")
-      return next
-    })
+      const next = prev.filter((tab) => tab !== id);
+      if (activeTab === id) setActiveTab(next[next.length - 1] ?? "users");
+      return next;
+    });
   }
 
   const tabMeta: Record<TabId, { label: string; sub?: string }> = {
@@ -46,7 +56,7 @@ export function ExamplesWorkspace() {
     orders: { label: "orders", sub: "8,000 rows" },
     products: { label: "products", sub: "2,000 rows" },
     query: { label: "query.sql" },
-  }
+  };
 
   return (
     <WindowChrome title="devdb — Queryon">
@@ -73,14 +83,16 @@ export function ExamplesWorkspace() {
                   "flex items-center justify-between rounded-md px-2 py-1 text-left font-mono text-xs",
                   activeTab === table.id
                     ? "bg-foreground text-background font-medium"
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                 )}
               >
                 {table.label}
                 <span
                   className={cn(
                     "text-[10px]",
-                    activeTab === table.id ? "text-background/70" : "text-muted-foreground/70"
+                    activeTab === table.id
+                      ? "text-background/70"
+                      : "text-muted-foreground/70",
                   )}
                 >
                   {table.rowCount.toLocaleString()}
@@ -99,7 +111,7 @@ export function ExamplesWorkspace() {
               "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left font-mono text-xs",
               activeTab === "query"
                 ? "bg-foreground text-background font-medium"
-                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
             )}
           >
             <Terminal className="size-3" />
@@ -117,15 +129,15 @@ export function ExamplesWorkspace() {
                   "group flex cursor-pointer items-center gap-2 border-r px-3 py-2 font-mono text-xs whitespace-nowrap",
                   activeTab === tab
                     ? "bg-background text-foreground"
-                    : "text-muted-foreground hover:bg-muted/40"
+                    : "text-muted-foreground hover:bg-muted/40",
                 )}
               >
                 {tabMeta[tab].label}
                 <button
                   type="button"
                   onClick={(event) => {
-                    event.stopPropagation()
-                    closeTab(tab)
+                    event.stopPropagation();
+                    closeTab(tab);
                   }}
                   className="rounded-sm p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted"
                 >
@@ -136,12 +148,26 @@ export function ExamplesWorkspace() {
           </div>
 
           <div className="min-h-0 flex-1">
-            {activeTab === "users" && <ExamplesDataGrid columns={USERS_COLUMNS} rows={usersRows} height={606} />}
+            {activeTab === "users" && (
+              <ExamplesDataGrid
+                columns={USERS_COLUMNS}
+                rows={usersRows}
+                height={606}
+              />
+            )}
             {activeTab === "orders" && (
-              <ExamplesDataGrid columns={ORDERS_COLUMNS} rows={ordersRows} height={606} />
+              <ExamplesDataGrid
+                columns={ORDERS_COLUMNS}
+                rows={ordersRows}
+                height={606}
+              />
             )}
             {activeTab === "products" && (
-              <ExamplesDataGrid columns={PRODUCTS_COLUMNS} rows={productsRows} height={606} />
+              <ExamplesDataGrid
+                columns={PRODUCTS_COLUMNS}
+                rows={productsRows}
+                height={606}
+              />
             )}
             {activeTab === "query" && <QueryTab />}
             {openTabs.length === 0 && (
@@ -153,9 +179,24 @@ export function ExamplesWorkspace() {
         </div>
       </div>
     </WindowChrome>
-  )
+  );
 }
 
-const USERS_COLUMNS = ["id", "email", "full_name", "plan", "country", "signed_up_via", "created_at"]
-const ORDERS_COLUMNS = ["id", "user_id", "items", "total", "status", "created_at"]
-const PRODUCTS_COLUMNS = ["id", "name", "category", "price", "stock", "status"]
+const USERS_COLUMNS = [
+  "id",
+  "email",
+  "full_name",
+  "plan",
+  "country",
+  "signed_up_via",
+  "created_at",
+];
+const ORDERS_COLUMNS = [
+  "id",
+  "user_id",
+  "items",
+  "total",
+  "status",
+  "created_at",
+];
+const PRODUCTS_COLUMNS = ["id", "name", "category", "price", "stock", "status"];

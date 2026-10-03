@@ -1,11 +1,11 @@
-import type { NextConfig } from "next"
-import createMDX from "@next/mdx"
+import type { NextConfig } from "next";
+import createMDX from "@next/mdx";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@queryon/ui"],
   pageExtensions: ["ts", "tsx", "mdx"],
-}
+};
 
-const withMDX = createMDX({})
+const withMDX = createMDX({});
 
-export default withMDX(nextConfig)
+export default withMDX(nextConfig);

@@ -1,7 +1,8 @@
 const BENTO_FEATURES = [
   {
     title: "Pop out any tab",
-    description: "Drag a table or query tab into its own window, then dock it back when you're done.",
+    description:
+      "Drag a table or query tab into its own window, then dock it back when you're done.",
     icon: "size",
   },
   {
@@ -12,17 +13,20 @@ const BENTO_FEATURES = [
   },
   {
     title: "Credentials stay local",
-    description: "Passwords go through your OS keychain, never through a third-party server.",
+    description:
+      "Passwords go through your OS keychain, never through a third-party server.",
     icon: "lock",
   },
   {
     title: "SSH tunnelling built in",
-    description: "Reach databases behind a bastion host without a separate terminal tunnel.",
+    description:
+      "Reach databases behind a bastion host without a separate terminal tunnel.",
     icon: "tunnel",
   },
   {
     title: "Export anything",
-    description: "CSV, JSON, or SQL — export a query, a table, or a whole schema in a couple clicks.",
+    description:
+      "CSV, JSON, or SQL — export a query, a table, or a whole schema in a couple clicks.",
     icon: "export",
   },
   {
@@ -33,12 +37,19 @@ const BENTO_FEATURES = [
   },
   {
     title: "Browse documents too",
-    description: "MongoDB collections get their own browser — not just tables shoehorned into rows.",
+    description:
+      "MongoDB collections get their own browser — not just tables shoehorned into rows.",
     icon: "platforms",
   },
-]
+];
 
-function FeatureCard({ title, description }: { title: string; description: string }) {
+function FeatureCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
   return (
     <div className="flex flex-col gap-6 rounded-xl border bg-card p-6 text-left md:p-8">
       <div className="flex h-24 items-center justify-center rounded-lg border bg-muted/30">
@@ -49,7 +60,7 @@ function FeatureCard({ title, description }: { title: string; description: strin
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
     </div>
-  )
+  );
 }
 
 export function FeatureGrid() {
@@ -59,8 +70,8 @@ export function FeatureGrid() {
         Everything you'd expect. Nothing you don't.
       </h2>
       <p className="mx-auto max-w-xl text-lg text-muted-foreground text-balance">
-        A short list of the things that make Queryon feel different from the moment you install
-        it.
+        A short list of the things that make Queryon feel different from the
+        moment you install it.
       </p>
 
       <div className="mt-12 flex flex-col gap-2">
@@ -81,5 +92,5 @@ export function FeatureGrid() {
         </div>
       </div>
     </div>
-  )
+  );
 }

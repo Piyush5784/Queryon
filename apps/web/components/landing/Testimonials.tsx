@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import { motion } from "motion/react"
+import { motion } from "motion/react";
 
-import { cn } from "@queryon/ui/lib/utils"
+import { cn } from "@queryon/ui/lib/utils";
 
-import { SectionLabel } from "./Brand"
+import { SectionLabel } from "./Brand";
 
 interface Testimonial {
-  quote: string
-  headline: string
-  name: string
-  title: string
-  tone?: "dark" | "brand"
+  quote: string;
+  headline: string;
+  name: string;
+  title: string;
+  tone?: "dark" | "brand";
 }
 
 const TESTIMONIALS: Testimonial[] = [
@@ -31,7 +31,8 @@ const TESTIMONIALS: Testimonial[] = [
     title: "Backend Engineer",
   },
   {
-    headline: "I stopped opening my browser every time I needed to check a database.",
+    headline:
+      "I stopped opening my browser every time I needed to check a database.",
     quote:
       "I wanted something lightweight for day-to-day database work, and Queryon fits that really well. It's fast, straightforward, and doesn't get in the way.",
     name: "Daniel Brooks",
@@ -53,20 +54,21 @@ const TESTIMONIALS: Testimonial[] = [
     title: "Backend Developer",
   },
   {
-    headline: "Great for quickly jumping into a database and figuring out what's going on.",
+    headline:
+      "Great for quickly jumping into a database and figuring out what's going on.",
     quote:
       "I use database clients mostly for debugging and inspecting data. Queryon makes those quick tasks really easy without making me feel like I'm opening a full administration suite.",
     name: "Aman Verma",
     title: "Software Developer",
   },
-]
+];
 
 function initials(name: string): string {
   return name
     .split(" ")
     .map((part) => part[0])
     .join("")
-    .toUpperCase()
+    .toUpperCase();
 }
 
 export function Testimonials() {
@@ -79,7 +81,9 @@ export function Testimonials() {
             What people <span className="text-brand">are saying.</span>
           </h2>
         </div>
-        <p className="max-w-sm text-muted-foreground">Early feedback from developers using Queryon day to day.</p>
+        <p className="max-w-sm text-muted-foreground">
+          Early feedback from developers using Queryon day to day.
+        </p>
       </div>
 
       <div className="mt-10 columns-1 gap-3 sm:columns-2 lg:columns-3">
@@ -89,38 +93,76 @@ export function Testimonials() {
             initial={{ opacity: 0, y: 24 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-8%" }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: (i % 3) * 0.08 }}
+            transition={{
+              duration: 0.6,
+              ease: [0.16, 1, 0.3, 1],
+              delay: (i % 3) * 0.08,
+            }}
             className={cn(
               "mb-3 flex break-inside-avoid flex-col gap-6 rounded-[24px] border p-6",
-              t.tone === "dark" && "console-lines border-transparent bg-ink text-white",
-              t.tone === "brand" && "border-transparent bg-brand-bright text-[#04140a]",
-              !t.tone && "bg-card"
+              t.tone === "dark" &&
+                "console-lines border-transparent bg-ink text-white",
+              t.tone === "brand" &&
+                "border-transparent bg-brand-bright text-[#04140a]",
+              !t.tone && "bg-card",
             )}
           >
-            <span aria-hidden className={cn("font-serif text-6xl leading-[0.5]", t.tone === "dark" ? "text-brand-bright" : t.tone === "brand" ? "text-[#04140a]/50" : "text-brand")}>
+            <span
+              aria-hidden
+              className={cn(
+                "font-serif text-6xl leading-[0.5]",
+                t.tone === "dark"
+                  ? "text-brand-bright"
+                  : t.tone === "brand"
+                    ? "text-[#04140a]/50"
+                    : "text-brand",
+              )}
+            >
               &ldquo;
             </span>
             <blockquote>
-              <p className={cn("font-medium tracking-tight text-balance", t.tone ? "text-xl" : "text-lg")}>{t.headline}</p>
-              <p className={cn("mt-3 text-sm leading-relaxed", t.tone ? "opacity-70" : "text-muted-foreground")}>{t.quote}</p>
+              <p
+                className={cn(
+                  "font-medium tracking-tight text-balance",
+                  t.tone ? "text-xl" : "text-lg",
+                )}
+              >
+                {t.headline}
+              </p>
+              <p
+                className={cn(
+                  "mt-3 text-sm leading-relaxed",
+                  t.tone ? "opacity-70" : "text-muted-foreground",
+                )}
+              >
+                {t.quote}
+              </p>
             </blockquote>
             <figcaption className="flex items-center gap-3">
               <span
                 className={cn(
                   "flex size-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                  t.tone === "dark" ? "bg-brand-bright text-[#04140a]" : t.tone === "brand" ? "bg-ink text-brand-bright" : "bg-brand-soft text-brand"
+                  t.tone === "dark"
+                    ? "bg-brand-bright text-[#04140a]"
+                    : t.tone === "brand"
+                      ? "bg-ink text-brand-bright"
+                      : "bg-brand-soft text-brand",
                 )}
               >
                 {initials(t.name)}
               </span>
               <div className="text-sm">
                 <div className="font-medium">{t.name}</div>
-                <div className={t.tone ? "opacity-60" : "text-muted-foreground"}>{t.title}</div>
+                <div
+                  className={t.tone ? "opacity-60" : "text-muted-foreground"}
+                >
+                  {t.title}
+                </div>
               </div>
             </figcaption>
           </motion.figure>
         ))}
       </div>
     </section>
-  )
+  );
 }

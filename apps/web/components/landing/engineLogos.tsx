@@ -1,6 +1,6 @@
 function DeviconLogo({ src, alt }: { src: string; alt: string }) {
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={alt} className="size-full object-contain" />
+  return <img src={src} alt={alt} className="size-full object-contain" />;
 }
 
 function CockroachDBLogo() {
@@ -12,7 +12,7 @@ function CockroachDBLogo() {
         <path d="M35 35l14 14M79 79l14 14M93 35L79 49M49 79l-14 14" />
       </g>
     </svg>
-  )
+  );
 }
 
 function NeonLogo() {
@@ -23,17 +23,44 @@ function NeonLogo() {
         fill="#34D59A"
       />
     </svg>
-  )
+  );
 }
 
 export const ENGINE_LOGOS: { name: string; Logo: () => React.JSX.Element }[] = [
-  { name: "PostgreSQL", Logo: () => <DeviconLogo src="/engine-logos/postgresql.svg" alt="PostgreSQL" /> },
-  { name: "MySQL", Logo: () => <DeviconLogo src="/engine-logos/mysql.svg" alt="MySQL" /> },
-  { name: "SQL Server", Logo: () => <DeviconLogo src="/engine-logos/sqlserver.svg" alt="SQL Server" /> },
-  { name: "ClickHouse", Logo: () => <DeviconLogo src="/engine-logos/clickhouse.svg" alt="ClickHouse" /> },
-  { name: "DuckDB", Logo: () => <DeviconLogo src="/engine-logos/duckdb.svg" alt="DuckDB" /> },
-  { name: "MariaDB", Logo: () => <DeviconLogo src="/engine-logos/mariadb.svg" alt="MariaDB" /> },
+  {
+    name: "PostgreSQL",
+    Logo: () => (
+      <DeviconLogo src="/engine-logos/postgresql.svg" alt="PostgreSQL" />
+    ),
+  },
+  {
+    name: "MySQL",
+    Logo: () => <DeviconLogo src="/engine-logos/mysql.svg" alt="MySQL" />,
+  },
+  {
+    name: "SQL Server",
+    Logo: () => (
+      <DeviconLogo src="/engine-logos/sqlserver.svg" alt="SQL Server" />
+    ),
+  },
+  {
+    name: "ClickHouse",
+    Logo: () => (
+      <DeviconLogo src="/engine-logos/clickhouse.svg" alt="ClickHouse" />
+    ),
+  },
+  {
+    name: "DuckDB",
+    Logo: () => <DeviconLogo src="/engine-logos/duckdb.svg" alt="DuckDB" />,
+  },
+  {
+    name: "MariaDB",
+    Logo: () => <DeviconLogo src="/engine-logos/mariadb.svg" alt="MariaDB" />,
+  },
   { name: "CockroachDB", Logo: CockroachDBLogo },
-  { name: "SQLite", Logo: () => <DeviconLogo src="/engine-logos/sqlite.svg" alt="SQLite" /> },
+  {
+    name: "SQLite",
+    Logo: () => <DeviconLogo src="/engine-logos/sqlite.svg" alt="SQLite" />,
+  },
   { name: "Neon", Logo: NeonLogo },
-]
+];

@@ -1,6 +1,6 @@
-import { cn } from "@queryon/ui/lib/utils"
+import { cn } from "@queryon/ui/lib/utils";
 
-import { WindowChrome } from "./WindowChrome"
+import { WindowChrome } from "./WindowChrome";
 
 const SAMPLE_ROWS = [
   ["alice@example.com", "Alice Nguyen", "pro", "US", "google", "2026-01-14"],
@@ -15,12 +15,12 @@ const SAMPLE_ROWS = [
   ["judy@example.com", "Judy Alvarez", "free", "ES", "google", "2026-03-04"],
   ["kenji@example.com", "Kenji Sato", "pro", "JP", "email", "2026-03-09"],
   ["liu@example.com", "Liu Wei", "free", "CN", "github", "2026-03-12"],
-]
+];
 
 function buildRows(count: number) {
   return Array.from({ length: count }, (_, i) => {
-    const sample = SAMPLE_ROWS[i % SAMPLE_ROWS.length]!
-    const [emailName, domain] = sample[0]!.split("@")
+    const sample = SAMPLE_ROWS[i % SAMPLE_ROWS.length]!;
+    const [emailName, domain] = sample[0]!.split("@");
     return [
       String(i + 1),
       `${emailName}${i + 1}@${domain}`,
@@ -29,8 +29,8 @@ function buildRows(count: number) {
       sample[3]!,
       sample[4]!,
       sample[5]!,
-    ]
-  })
+    ];
+  });
 }
 
 export function DataGridMock({
@@ -38,18 +38,29 @@ export function DataGridMock({
   fixedHeight,
   height,
 }: {
-  compact?: boolean
-  fixedHeight?: boolean
-  height?: string
+  compact?: boolean;
+  fixedHeight?: boolean;
+  height?: string;
 }) {
-  const columns = ["id", "email", "full_name", "plan", "country", "signed_up_via", "created_at"]
-  const rows = buildRows(fixedHeight ? 500 : 3)
-  const scrolls = Boolean(height) || fixedHeight
+  const columns = [
+    "id",
+    "email",
+    "full_name",
+    "plan",
+    "country",
+    "signed_up_via",
+    "created_at",
+  ];
+  const rows = buildRows(fixedHeight ? 500 : 3);
+  const scrolls = Boolean(height) || fixedHeight;
 
   return (
     <WindowChrome title="users — devdb" status="connected">
       <div
-        className={cn("flex", !height && fixedHeight && "h-[420px] lg:h-[680px]")}
+        className={cn(
+          "flex",
+          !height && fixedHeight && "h-[420px] lg:h-[680px]",
+        )}
         style={height ? { height } : undefined}
       >
         {!compact && (
@@ -65,24 +76,31 @@ export function DataGridMock({
               Tables
             </p>
             <div className="flex flex-col gap-0.5 pl-1">
-              {["users", "categories", "products", "orders", "order_items"].map((table, i) => (
-                <div
-                  key={table}
-                  className={cn(
-                    "rounded-md px-2 py-1 text-left font-mono text-xs",
-                    i === 0
-                      ? "bg-ink font-medium text-brand-bright dark:bg-brand dark:text-[#04140a]"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  {table}
-                </div>
-              ))}
+              {["users", "categories", "products", "orders", "order_items"].map(
+                (table, i) => (
+                  <div
+                    key={table}
+                    className={cn(
+                      "rounded-md px-2 py-1 text-left font-mono text-xs",
+                      i === 0
+                        ? "bg-ink font-medium text-brand-bright dark:bg-brand dark:text-[#04140a]"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {table}
+                  </div>
+                ),
+              )}
             </div>
           </div>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className={cn("min-w-0 flex-1 overflow-x-auto", scrolls && "overflow-y-auto")}>
+          <div
+            className={cn(
+              "min-w-0 flex-1 overflow-x-auto",
+              scrolls && "overflow-y-auto",
+            )}
+          >
             <table className="w-full border-collapse text-left font-mono text-xs">
               <thead>
                 <tr className="border-b bg-muted/20">
@@ -98,9 +116,18 @@ export function DataGridMock({
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={i} className={cn("border-b transition-colors last:border-0 hover:bg-brand-soft", i === 2 && "bg-brand-soft/70")}>
+                  <tr
+                    key={i}
+                    className={cn(
+                      "border-b transition-colors last:border-0 hover:bg-brand-soft",
+                      i === 2 && "bg-brand-soft/70",
+                    )}
+                  >
                     {row.map((cell, j) => (
-                      <td key={j} className="px-3 py-2 whitespace-nowrap text-foreground/80">
+                      <td
+                        key={j}
+                        className="px-3 py-2 whitespace-nowrap text-foreground/80"
+                      >
                         {cell}
                       </td>
                     ))}
@@ -119,5 +146,5 @@ export function DataGridMock({
         </div>
       </div>
     </WindowChrome>
-  )
+  );
 }

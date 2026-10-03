@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react";
 import DataEditor, {
   getDefaultTheme,
   GridCellKind,
@@ -8,12 +8,12 @@ import DataEditor, {
   type GridColumn,
   type Item,
   type Theme,
-} from "@glideapps/glide-data-grid"
-import "@glideapps/glide-data-grid/dist/index.css"
+} from "@glideapps/glide-data-grid";
+import "@glideapps/glide-data-grid/dist/index.css";
 
-const MIN_COLUMN_WIDTH = 90
-const MAX_COLUMN_WIDTH = 320
-const DEFAULT_COLUMN_WIDTH = 160
+const MIN_COLUMN_WIDTH = 90;
+const MAX_COLUMN_WIDTH = 320;
+const DEFAULT_COLUMN_WIDTH = 160;
 
 const queryonLightTheme: Partial<Theme> = {
   accentColor: "#15803d",
@@ -38,7 +38,7 @@ const queryonLightTheme: Partial<Theme> = {
   borderColor: "#e3e9e5",
   drilldownBorder: "#e3e9e5",
   linkColor: "#15803d",
-}
+};
 
 const queryonDarkTheme: Partial<Theme> = {
   accentColor: "#4ade80",
@@ -63,46 +63,64 @@ const queryonDarkTheme: Partial<Theme> = {
   borderColor: "rgba(255, 255, 255, 0.1)",
   drilldownBorder: "rgba(255, 255, 255, 0.2)",
   linkColor: "#4ade80",
-}
+};
 
 function usePrefersDark(): boolean {
   const [isDark, setIsDark] = useState(
-    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
-  )
+    () =>
+      typeof document !== "undefined" &&
+      document.documentElement.classList.contains("dark"),
+  );
 
   useEffect(() => {
-    const root = document.documentElement
-    const observer = new MutationObserver(() => setIsDark(root.classList.contains("dark")))
-    observer.observe(root, { attributes: true, attributeFilter: ["class"] })
-    return () => observer.disconnect()
-  }, [])
+    const root = document.documentElement;
+    const observer = new MutationObserver(() =>
+      setIsDark(root.classList.contains("dark")),
+    );
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
-  return isDark
+  return isDark;
 }
 
-function estimateColumnWidth(columnName: string, sampleRows: (string | number)[][], columnIndex: number) {
-  let maxLength = columnName.length
-  const sampleSize = Math.min(sampleRows.length, 30)
+function estimateColumnWidth(
+  columnName: string,
+  sampleRows: (string | number)[][],
+  columnIndex: number,
+) {
+  let maxLength = columnName.length;
+  const sampleSize = Math.min(sampleRows.length, 30);
   for (let i = 0; i < sampleSize; i++) {
-    const text = String(sampleRows[i]?.[columnIndex] ?? "")
-    if (text.length > maxLength) maxLength = text.length
+    const text = String(sampleRows[i]?.[columnIndex] ?? "");
+    if (text.length > maxLength) maxLength = text.length;
   }
-  const estimated = 16 + maxLength * 7
-  return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, estimated || DEFAULT_COLUMN_WIDTH))
+  const estimated = 16 + maxLength * 7;
+  return Math.min(
+    MAX_COLUMN_WIDTH,
+    Math.max(MIN_COLUMN_WIDTH, estimated || DEFAULT_COLUMN_WIDTH),
+  );
 }
 
 export interface ExamplesDataGridProps {
-  columns: string[]
-  rows: (string | number)[][]
-  height?: number
+  columns: string[];
+  rows: (string | number)[][];
+  height?: number;
 }
 
-export function ExamplesDataGrid({ columns, rows, height = 460 }: ExamplesDataGridProps) {
-  const isDark = usePrefersDark()
+export function ExamplesDataGrid({
+  columns,
+  rows,
+  height = 460,
+}: ExamplesDataGridProps) {
+  const isDark = usePrefersDark();
   const theme = useMemo(
-    () => ({ ...getDefaultTheme(), ...(isDark ? queryonDarkTheme : queryonLightTheme) }),
-    [isDark]
-  )
+    () => ({
+      ...getDefaultTheme(),
+      ...(isDark ? queryonDarkTheme : queryonLightTheme),
+    }),
+    [isDark],
+  );
 
   const gridColumns: GridColumn[] = useMemo(
     () =>
@@ -111,20 +129,20 @@ export function ExamplesDataGrid({ columns, rows, height = 460 }: ExamplesDataGr
         title: name,
         width: estimateColumnWidth(name, rows, index),
       })),
-    [columns, rows]
-  )
+    [columns, rows],
+  );
 
   const getCellContent = ([col, row]: Item): GridCell => {
-    const value = rows[row]?.[col] ?? ""
-    const display = String(value)
+    const value = rows[row]?.[col] ?? "";
+    const display = String(value);
     return {
       kind: GridCellKind.Text,
       data: display,
       displayData: display,
       allowOverlay: false,
       readonly: true,
-    }
-  }
+    };
+  };
 
   return (
     <div style={{ height }} className="w-full overflow-hidden">
@@ -141,5 +159,5 @@ export function ExamplesDataGrid({ columns, rows, height = 460 }: ExamplesDataGr
         height={height}
       />
     </div>
-  )
+  );
 }

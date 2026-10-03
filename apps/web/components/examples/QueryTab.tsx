@@ -1,19 +1,19 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Play, Loader2 } from "lucide-react"
+import { useState } from "react";
+import { Play, Loader2 } from "lucide-react";
 
-import { buttonVariants } from "@queryon/ui/components/button"
-import { cn } from "@queryon/ui/lib/utils"
+import { buttonVariants } from "@queryon/ui/components/button";
+import { cn } from "@queryon/ui/lib/utils";
 
-import { ExamplesDataGrid } from "./ExamplesDataGrid"
+import { ExamplesDataGrid } from "./ExamplesDataGrid";
 
 interface CannedQuery {
-  label: string
-  sql: string
-  columns: string[]
-  rows: (string | number)[][]
-  ms: number
+  label: string;
+  sql: string;
+  columns: string[];
+  rows: (string | number)[][];
+  ms: number;
 }
 
 const CANNED_QUERIES: CannedQuery[] = [
@@ -62,30 +62,30 @@ const CANNED_QUERIES: CannedQuery[] = [
     ],
     ms: 18,
   },
-]
+];
 
 export function QueryTab() {
-  const [activeIndex, setActiveIndex] = useState(0)
-  const [sql, setSql] = useState(CANNED_QUERIES[0]!.sql)
-  const [running, setRunning] = useState(false)
-  const [result, setResult] = useState<CannedQuery | null>(null)
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [sql, setSql] = useState(CANNED_QUERIES[0]!.sql);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<CannedQuery | null>(null);
 
-  const activeQuery = CANNED_QUERIES[activeIndex]!
+  const activeQuery = CANNED_QUERIES[activeIndex]!;
 
   function selectPreset(index: number) {
-    setActiveIndex(index)
-    setSql(CANNED_QUERIES[index]!.sql)
-    setResult(null)
+    setActiveIndex(index);
+    setSql(CANNED_QUERIES[index]!.sql);
+    setResult(null);
   }
 
   function runQuery() {
-    setRunning(true)
-    setResult(null)
-    const delay = 380 + Math.random() * 420
+    setRunning(true);
+    setResult(null);
+    const delay = 380 + Math.random() * 420;
     setTimeout(() => {
-      setRunning(false)
-      setResult(activeQuery)
-    }, delay)
+      setRunning(false);
+      setResult(activeQuery);
+    }, delay);
   }
 
   return (
@@ -100,7 +100,7 @@ export function QueryTab() {
               "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
               index === activeIndex
                 ? "bg-foreground text-background"
-                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
           >
             {query.label}
@@ -132,7 +132,11 @@ export function QueryTab() {
       <div className="flex min-h-0 flex-1 flex-col">
         {result ? (
           <>
-            <ExamplesDataGrid columns={result.columns} rows={result.rows} height={260} />
+            <ExamplesDataGrid
+              columns={result.columns}
+              rows={result.rows}
+              height={260}
+            />
             <div className="flex shrink-0 items-center gap-2 border-t px-3 py-2 text-[11px] text-muted-foreground">
               <span className="size-1.5 rounded-full bg-emerald-500" />
               {result.rows.length} rows · {result.ms}ms
@@ -145,5 +149,5 @@ export function QueryTab() {
         )}
       </div>
     </div>
-  )
+  );
 }

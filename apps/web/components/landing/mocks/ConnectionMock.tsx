@@ -1,18 +1,27 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState } from "react";
 
-import { cn } from "@queryon/ui/lib/utils"
+import { cn } from "@queryon/ui/lib/utils";
 
-import { ENGINE_LOGOS } from "../engineLogos"
-import { WindowChrome } from "./WindowChrome"
+import { ENGINE_LOGOS } from "../engineLogos";
+import { WindowChrome } from "./WindowChrome";
 
-const SHOWN_ENGINES = ["PostgreSQL", "MySQL", "ClickHouse", "DuckDB", "SQL Server", "SQLite"]
-const REMAINING_ENGINE_COUNT = 15 - SHOWN_ENGINES.length
+const SHOWN_ENGINES = [
+  "PostgreSQL",
+  "MySQL",
+  "ClickHouse",
+  "DuckDB",
+  "SQL Server",
+  "SQLite",
+];
+const REMAINING_ENGINE_COUNT = 15 - SHOWN_ENGINES.length;
 
 export function ConnectionMock() {
-  const engines = ENGINE_LOGOS.filter((engine) => SHOWN_ENGINES.includes(engine.name))
-  const [selected, setSelected] = useState("PostgreSQL")
+  const engines = ENGINE_LOGOS.filter((engine) =>
+    SHOWN_ENGINES.includes(engine.name),
+  );
+  const [selected, setSelected] = useState("PostgreSQL");
 
   return (
     <WindowChrome title="New Connection" status="ssl · keychain">
@@ -26,7 +35,7 @@ export function ConnectionMock() {
               "flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition-colors",
               selected === engine.name
                 ? "border-brand bg-brand-soft ring-1 ring-brand/40"
-                : "hover:border-brand/40 hover:bg-muted/50"
+                : "hover:border-brand/40 hover:bg-muted/50",
             )}
           >
             <div className="size-6">
@@ -40,5 +49,5 @@ export function ConnectionMock() {
         +{REMAINING_ENGINE_COUNT} more databases supported
       </p>
     </WindowChrome>
-  )
+  );
 }

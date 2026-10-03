@@ -1,4 +1,4 @@
-import { WindowChrome } from "./WindowChrome"
+import { WindowChrome } from "./WindowChrome";
 
 export function SqlEditorMock() {
   return (
@@ -6,7 +6,9 @@ export function SqlEditorMock() {
       <div className="p-4 font-mono text-xs leading-relaxed">
         <div>
           <span className="text-brand font-semibold">select</span>{" "}
-          <span className="text-foreground/80">o.id, u.full_name, o.total_cents</span>
+          <span className="text-foreground/80">
+            o.id, u.full_name, o.total_cents
+          </span>
         </div>
         <div>
           <span className="text-brand font-semibold">from</span>{" "}
@@ -21,12 +23,14 @@ export function SqlEditorMock() {
         <div>
           <span className="text-brand font-semibold">where</span>{" "}
           <span className="text-foreground/80">o.status = </span>
-          <span className="text-amber-600 dark:text-amber-300">&apos;paid&apos;</span>
+          <span className="text-amber-600 dark:text-amber-300">
+            &apos;paid&apos;
+          </span>
         </div>
         <div className="mt-3 flex items-center gap-2 text-muted-foreground">
           <span className="size-1.5 rounded-full bg-brand" />4 rows · 12ms
         </div>
       </div>
     </WindowChrome>
-  )
+  );
 }

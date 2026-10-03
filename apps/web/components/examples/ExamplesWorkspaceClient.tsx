@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import dynamic from "next/dynamic"
+import dynamic from "next/dynamic";
 
-import { WindowChrome } from "../landing/mocks/WindowChrome"
+import { WindowChrome } from "../landing/mocks/WindowChrome";
 
 const ExamplesWorkspace = dynamic(
   () => import("./ExamplesWorkspace").then((mod) => mod.ExamplesWorkspace),
@@ -15,9 +15,9 @@ const ExamplesWorkspace = dynamic(
         </div>
       </WindowChrome>
     ),
-  }
-)
+  },
+);
 
 export function ExamplesWorkspaceClient() {
-  return <ExamplesWorkspace />
+  return <ExamplesWorkspace />;
 }

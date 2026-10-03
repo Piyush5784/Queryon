@@ -1,6 +1,6 @@
-import Link from "next/link"
+import Link from "next/link";
 
-import { Logo } from "./Brand"
+import { Logo } from "./Brand";
 
 const COLUMNS = [
   {
@@ -21,11 +21,19 @@ const COLUMNS = [
   {
     title: "Community",
     links: [
-      { href: "https://queryon.featurebase.app", label: "Feedback", external: true },
-      { href: "https://github.com/Piyush5784/Queryon", label: "GitHub", external: true },
+      {
+        href: "https://queryon.featurebase.app",
+        label: "Feedback",
+        external: true,
+      },
+      {
+        href: "https://github.com/Piyush5784/Queryon",
+        label: "GitHub",
+        external: true,
+      },
     ],
   },
-]
+];
 
 export function SiteFooter() {
   return (
@@ -33,7 +41,9 @@ export function SiteFooter() {
       <div className="mx-auto grid max-w-7xl gap-12 px-5 pt-16 pb-10 sm:px-6 md:grid-cols-[1.4fr_repeat(3,1fr)]">
         <div>
           <Logo />
-          <p className="mt-4 max-w-xs text-sm text-muted-foreground">A fast, native desktop client for every database you work with.</p>
+          <p className="mt-4 max-w-xs text-sm text-muted-foreground">
+            A fast, native desktop client for every database you work with.
+          </p>
           <span className="mt-6 inline-flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-[11px] text-muted-foreground">
             <span className="size-1.5 animate-pulse-dot rounded-full bg-brand" />
             All systems local
@@ -41,16 +51,26 @@ export function SiteFooter() {
         </div>
         {COLUMNS.map((col) => (
           <div key={col.title}>
-            <h3 className="font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase">{col.title}</h3>
+            <h3 className="font-mono text-[11px] tracking-[0.16em] text-muted-foreground uppercase">
+              {col.title}
+            </h3>
             <ul className="mt-4 flex flex-col gap-2.5 text-sm">
               {col.links.map((link) => (
                 <li key={link.href}>
                   {"external" in link ? (
-                    <a href={link.href} target="_blank" rel="noreferrer" className="transition-colors hover:text-brand">
+                    <a
+                      href={link.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="transition-colors hover:text-brand"
+                    >
                       {link.label}
                     </a>
                   ) : (
-                    <Link href={link.href} className="transition-colors hover:text-brand">
+                    <Link
+                      href={link.href}
+                      className="transition-colors hover:text-brand"
+                    >
                       {link.label}
                     </Link>
                   )}
@@ -62,11 +82,16 @@ export function SiteFooter() {
       </div>
       <div className="mx-auto flex max-w-7xl items-center justify-between border-t px-5 py-6 text-xs text-muted-foreground sm:px-6">
         <span>© {new Date().getFullYear()} Queryon.</span>
-        <span className="font-mono">Built for people who live in databases.</span>
+        <span className="font-mono">
+          Built for people who live in databases.
+        </span>
       </div>
-      <div aria-hidden className="pointer-events-none -mb-[0.22em] text-center text-[22vw] leading-none font-semibold tracking-[-0.06em] text-foreground/[0.04] select-none">
+      <div
+        aria-hidden
+        className="pointer-events-none -mb-[0.22em] text-center text-[22vw] leading-none font-semibold tracking-[-0.06em] text-foreground/[0.04] select-none"
+      >
         Queryon
       </div>
     </footer>
-  )
+  );
 }
