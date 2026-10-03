@@ -1,6 +1,6 @@
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google"
 
-import "@queryon/ui/globals.css"
+import "./theme.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@queryon/ui/lib/utils";
 

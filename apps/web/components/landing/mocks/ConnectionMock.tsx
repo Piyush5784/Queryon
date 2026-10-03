@@ -15,7 +15,7 @@ export function ConnectionMock() {
   const [selected, setSelected] = useState("PostgreSQL")
 
   return (
-    <WindowChrome title="New Connection">
+    <WindowChrome title="New Connection" status="ssl · keychain">
       <div className="grid grid-cols-3 gap-2 p-4">
         {engines.map((engine) => (
           <button
@@ -25,8 +25,8 @@ export function ConnectionMock() {
             className={cn(
               "flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition-colors",
               selected === engine.name
-                ? "border-foreground/30 bg-foreground/5"
-                : "hover:border-foreground/20 hover:bg-muted/40"
+                ? "border-brand bg-brand-soft ring-1 ring-brand/40"
+                : "hover:border-brand/40 hover:bg-muted/50"
             )}
           >
             <div className="size-6">

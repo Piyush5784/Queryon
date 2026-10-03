@@ -71,8 +71,14 @@ export default async function InstallPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-3xl font-medium tracking-tight">Install Queryon</h1>
-        <p className="mt-2 text-muted-foreground">
+        <p className="flex items-center gap-2 font-mono text-xs tracking-[0.18em] text-muted-foreground uppercase">
+          <span className="size-1.5 animate-pulse-dot rounded-full bg-brand-bright" />
+          Latest release
+        </p>
+        <h1 className="mt-4 text-[clamp(32px,4vw,48px)] leading-[1.05] font-semibold tracking-[-0.04em]">
+          Install <span className="text-brand">Queryon</span>
+        </h1>
+        <p className="mt-3 text-[17px] text-muted-foreground">
           Queryon is free and runs on Windows, macOS, and Linux. Pick your platform below.
         </p>
       </div>

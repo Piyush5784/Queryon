@@ -1,50 +1,21 @@
-import Link from "next/link"
-import { Database } from "lucide-react"
-
-import { ThemeToggle } from "../../components/theme-toggle"
-
-const NAV = [
-  { href: "/docs", label: "Overview" },
-  { href: "/docs/install", label: "Install" },
-]
+import { Navbar } from "../../components/landing/Navbar"
+import { SiteFooter } from "../../components/landing/SiteFooter"
+import { DocsNav } from "./DocsNav"
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-svh flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link href="/" className="flex items-center gap-2 font-medium">
-            <Database className="size-5" />
-            Queryon
-          </Link>
-          <nav className="flex items-center gap-6 text-sm text-muted-foreground">
-            <Link href="/#features" className="hover:text-foreground">
-              Features
-            </Link>
-            <Link href="/docs" className="text-foreground">
-              Docs
-            </Link>
-            <ThemeToggle />
-          </nav>
+      <Navbar />
+      <div className="relative">
+        <div aria-hidden className="grid-lines pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+        <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-5 py-12 sm:flex-row sm:gap-12 sm:px-6">
+          <aside className="shrink-0 sm:w-52">
+            <DocsNav />
+          </aside>
+          <main className="min-w-0 flex-1 pb-16">{children}</main>
         </div>
-      </header>
-
-      <div className="mx-auto flex w-full max-w-6xl flex-1 gap-10 px-6 py-10">
-        <aside className="hidden w-48 shrink-0 sm:block">
-          <nav className="sticky top-10 flex flex-col gap-1 text-sm">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-md px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </aside>
-        <main className="min-w-0 flex-1">{children}</main>
       </div>
+      <SiteFooter />
     </div>
   )
 }

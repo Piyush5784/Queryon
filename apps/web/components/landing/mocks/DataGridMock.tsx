@@ -47,7 +47,7 @@ export function DataGridMock({
   const scrolls = Boolean(height) || fixedHeight
 
   return (
-    <WindowChrome title="users — devdb">
+    <WindowChrome title="users — devdb" status="connected">
       <div
         className={cn("flex", !height && fixedHeight && "h-[420px] lg:h-[680px]")}
         style={height ? { height } : undefined}
@@ -57,8 +57,8 @@ export function DataGridMock({
             <p className="mb-2 px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
               Connections
             </p>
-            <div className="mb-3 flex items-center gap-2 rounded-md bg-foreground/10 px-2 py-1.5">
-              <span className="size-2 rounded-lg bg-emerald-500" />
+            <div className="mb-3 flex items-center gap-2 rounded-md bg-brand-soft px-2 py-1.5">
+              <span className="size-2 animate-pulse-dot rounded-full bg-brand" />
               <span className="font-mono text-xs font-medium">devdb</span>
             </div>
             <p className="mb-2 px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
@@ -71,7 +71,7 @@ export function DataGridMock({
                   className={cn(
                     "rounded-md px-2 py-1 text-left font-mono text-xs",
                     i === 0
-                      ? "bg-foreground text-background font-medium"
+                      ? "bg-ink font-medium text-brand-bright dark:bg-brand dark:text-[#04140a]"
                       : "text-muted-foreground"
                   )}
                 >
@@ -98,7 +98,7 @@ export function DataGridMock({
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={i} className="border-b last:border-0 hover:bg-muted/20">
+                  <tr key={i} className={cn("border-b transition-colors last:border-0 hover:bg-brand-soft", i === 2 && "bg-brand-soft/70")}>
                     {row.map((cell, j) => (
                       <td key={j} className="px-3 py-2 whitespace-nowrap text-foreground/80">
                         {cell}
@@ -110,7 +110,10 @@ export function DataGridMock({
             </table>
           </div>
           <div className="flex shrink-0 items-center justify-between border-t px-3 py-2 text-[11px] text-muted-foreground">
-            <span>{rows.length} rows</span>
+            <span className="flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-brand" />
+              {rows.length} rows · 18 ms
+            </span>
             <span>Page 1 of 1</span>
           </div>
         </div>
