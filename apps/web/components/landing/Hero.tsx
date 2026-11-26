@@ -205,7 +205,7 @@ export function Hero() {
 
           <p className="mt-6 max-w-xl text-[17px] leading-relaxed text-muted-foreground">
             A fast, native desktop client for Postgres, MySQL, SQL Server,
-            ClickHouse, DuckDB and a dozen more — browse schemas, run queries
+            ClickHouse and a dozen more — browse schemas, run queries
             and edit data without switching tools.
           </p>
 

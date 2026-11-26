@@ -109,20 +109,6 @@ export function QueryTabView({ tab, onQueryActivity }: QueryTabViewProps) {
       setResult(res);
       setExecutedSql(sql);
       setCachedQueryResult(tab.id, res, sql);
-      if (res.kind === "rows") {
-        const rowCount = res.totalRowCount ?? res.rows.length;
-        toast.add({
-          type: "success",
-          title: "Query complete",
-          description: `${rowCount.toLocaleString()} row${rowCount === 1 ? "" : "s"} returned in ${res.durationMs}ms`,
-        });
-      } else {
-        toast.add({
-          type: "success",
-          title: "Query complete",
-          description: `${res.rowCount.toLocaleString()} row${res.rowCount === 1 ? "" : "s"} affected in ${res.durationMs}ms`,
-        });
-      }
     } catch (err) {
       const message = toErrorMessage(err);
       setError(message);

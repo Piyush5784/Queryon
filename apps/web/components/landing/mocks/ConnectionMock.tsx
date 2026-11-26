@@ -11,11 +11,11 @@ const SHOWN_ENGINES = [
   "PostgreSQL",
   "MySQL",
   "ClickHouse",
-  "DuckDB",
+  "MariaDB",
   "SQL Server",
   "SQLite",
 ];
-const REMAINING_ENGINE_COUNT = 15 - SHOWN_ENGINES.length;
+const REMAINING_ENGINE_COUNT = 13 - SHOWN_ENGINES.length;
 
 export function ConnectionMock() {
   const engines = ENGINE_LOGOS.filter((engine) =>

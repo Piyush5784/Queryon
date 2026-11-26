@@ -4,7 +4,7 @@ set -euo pipefail
 N="${1:-}"
 if [[ -z "$N" || ! "$N" =~ ^[0-9]+$ || "$N" -lt 1 ]]; then
   echo "Usage: $0 <n>   (n = a positive integer row count, e.g. 10000)" >&2
-  echo "Seeds whichever dev database containers are currently running. DuckDB/SQLite are file-based and not covered here — use scripts/seed-duckdb.sh/seed-sqlite.sh directly." >&2
+  echo "Seeds whichever dev database containers are currently running. SQLite is file-based and not covered here — use scripts/seed-sqlite.sh directly." >&2
   exit 1
 fi
 

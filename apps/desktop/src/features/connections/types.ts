@@ -12,10 +12,8 @@ export type Engine =
   | "sql-server"
   | "star-rocks"
   | "click-house"
-  | "duck-db"
   | "lib-sql"
-  | "trino"
-  | "mongo-db";
+  | "trino";
 
 export type SshAuth =
   | { kind: "password"; password: string }
@@ -78,22 +76,18 @@ export function engineOf(profile: { engine?: Engine }): Engine {
   return profile.engine ?? "postgres";
 }
 
-// SQLite and DuckDB are embedded, not client-server — there is no
+// SQLite is embedded, not client-server — there is no
 // host/port/user/password to connect with, only a file path.
 // `ConnectionProfile.database` holds that path instead of a database
-// name for these engines (see `Engine::Sqlite`/`Engine::DuckDb`'s doc
-// comments on the Rust side); host/port/user/password are simply left
-// empty rather than adding a separate profile shape per engine.
+// name for this engine (see `Engine::Sqlite`'s doc comment on the Rust
+// side); host/port/user/password are simply left empty rather than
+// adding a separate profile shape per engine.
 export function isFileBasedEngine(engine: Engine): boolean {
-  return engine === "sqlite" || engine === "duck-db";
+  return engine === "sqlite";
 }
 
 export function isRemoteUrlEngine(engine: Engine): boolean {
-  return engine === "lib-sql" || engine === "mongo-db";
-}
-
-export function isDocumentEngine(engine: Engine): boolean {
-  return engine === "mongo-db";
+  return engine === "lib-sql";
 }
 
 export const DEFAULT_PG_PORT = 5432;

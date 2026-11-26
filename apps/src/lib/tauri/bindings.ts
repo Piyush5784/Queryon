@@ -19,7 +19,6 @@ export const commands = {
 	 */
 	sshPickKeyFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("ssh_pick_key_file")),
 	dbPickSqliteFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("db_pick_sqlite_file")),
-	dbPickDuckdbFile: () => typedError<string | null, AppError>(__TAURI_INVOKE("db_pick_duckdb_file")),
 	dbListTables: (connectionId: string) => typedError<TableRef[], AppError>(__TAURI_INVOKE("db_list_tables", { connectionId })),
 	dbGetTableColumns: (connectionId: string, schema: string, table: string) => typedError<ColumnInfo[], AppError>(__TAURI_INVOKE("db_get_table_columns", { connectionId, schema, table })),
 	dbListIndexes: (connectionId: string, schema: string, table: string) => typedError<IndexInfo[], AppError>(__TAURI_INVOKE("db_list_indexes", { connectionId, schema, table })),
@@ -174,7 +173,7 @@ export type DocumentSummary = {
 	preview: string,
 };
 
-export type Engine = "postgres" | "neon" | "cockroach-db" | "greengage-db" | "my-sql" | "maria-db" | "ti-db" | "sqlite" | "sql-server" | "star-rocks" | "click-house" | "duck-db" | "lib-sql" | "trino" | "mongo-db";
+export type Engine = "postgres" | "neon" | "cockroach-db" | "greengage-db" | "my-sql" | "maria-db" | "ti-db" | "sqlite" | "sql-server" | "star-rocks" | "click-house" | "lib-sql" | "trino" | "mongo-db";
 
 export type ExportFormat = "csv" | "json" | "sql";
 

@@ -1,7 +1,7 @@
 # Queryon:- Desktop database client 
 
 A fast, native desktop app for working with databases, built with React and Tauri instead of Electron for a lighter footprint. Think of it as a local, more flexible alternative to tools like Neon's web console: 
-* Connect to 10+ database engines (Postgres, SQLite, DuckDB, NeonDB, and more), 
+* Connect to 10+ database engines (Postgres, SQLite, MySQL, NeonDB, and more), 
 * Run queries with real syntax suggestions, and manage multiple databases side by side across tabs, all without leaving your desktop.
 
 ## Demo

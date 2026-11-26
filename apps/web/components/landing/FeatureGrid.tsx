@@ -8,7 +8,7 @@ const BENTO_FEATURES = [
   {
     title: "Every engine, one app",
     description:
-      "Postgres, MySQL, SQL Server, SQLite, DuckDB, ClickHouse, and more — no separate tools.",
+      "Postgres, MySQL, SQL Server, SQLite, ClickHouse, and more — no separate tools.",
     icon: "engines",
   },
   {

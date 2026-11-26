@@ -10,7 +10,7 @@ import { fetchQueryResultPage, type QueryResult } from "@/src/features/query/api
 import { QueryResultJsonSheet } from "@/src/features/query/components/QueryResultJsonSheet";
 import { toErrorMessage } from "@/src/lib/tauri/errors";
 
-export const QUERY_RESULT_PAGE_SIZE = 10_000;
+export const QUERY_RESULT_PAGE_SIZE = 1_000;
 
 function rowsToTsv(columns: string[], rows: unknown[][]): string {
   const cellToText = (cell: unknown) => {

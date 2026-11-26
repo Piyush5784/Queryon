@@ -144,27 +144,6 @@ pub fn clean_libsql_error(raw: &str) -> String {
     }
 }
 
-pub fn describe_mongodb_error(err: &mongodb::error::Error) -> String {
-    clean_mongodb_error(&err.to_string())
-}
-
-pub fn clean_mongodb_error(raw: &str) -> String {
-    if raw.contains("Authentication failed") || raw.contains("bad auth") {
-        "Authentication failed — check your username and password.".to_string()
-    } else if raw.contains("ServerSelectionTimeout") || raw.contains("server selection timeout") {
-        "Could not reach the MongoDB server — check the connection string and your network/firewall."
-            .to_string()
-    } else if raw.contains("Connection refused") {
-        "Connection refused — check the host and that the server is running.".to_string()
-    } else if raw.contains("timed out") {
-        "Connection timed out — check the connection string and your network/firewall.".to_string()
-    } else if raw.contains("InvalidUri") || raw.contains("invalid uri") {
-        "Invalid MongoDB connection string.".to_string()
-    } else {
-        raw.to_string()
-    }
-}
-
 pub fn describe_trino_error(err: &trino_rust_client::error::Error) -> String {
     use trino_rust_client::error::Error as TrinoError;
     match err {

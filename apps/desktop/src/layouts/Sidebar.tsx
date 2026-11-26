@@ -35,8 +35,6 @@ interface SidebarProps {
   onDisconnect: (id: string) => void;
   onDeleteConnection: (id: string) => void;
   onOpenTable: (connectionId: string, schema: string, table: string) => void;
-  onOpenDatabase: (connectionId: string, database: string) => void;
-  onOpenCollection: (connectionId: string, database: string, collection: string) => void;
   onNewConnection: () => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
   onOpenHistoryEntry: (connectionId: string, sql: string) => void;
@@ -79,8 +77,6 @@ export function Sidebar({
   onDisconnect,
   onDeleteConnection,
   onOpenTable,
-  onOpenDatabase,
-  onOpenCollection,
   onNewConnection,
   onOpenSavedQuery,
   onOpenHistoryEntry,
@@ -147,10 +143,6 @@ export function Sidebar({
                     onDeleteConnection={() => onDeleteConnection(conn.id)}
                     onOpenTable={(schema, table) =>
                       onOpenTable(conn.id, schema, table)
-                    }
-                    onOpenDatabase={(database) => onOpenDatabase(conn.id, database)}
-                    onOpenCollection={(database, collection) =>
-                      onOpenCollection(conn.id, database, collection)
                     }
                     onOpenSavedQuery={onOpenSavedQuery}
                     onOpenHistoryEntry={(sql) => onOpenHistoryEntry(conn.id, sql)}

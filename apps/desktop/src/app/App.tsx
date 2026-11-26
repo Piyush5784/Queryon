@@ -7,8 +7,7 @@ import {
   listSavedConnections,
 } from "@/src/features/connections/api";
 import { ConnectionDialog } from "@/src/features/connections/components/ConnectionDialog";
-import { engineOf, isDocumentEngine, type ConnectionProfile, type SavedConnectionProfile } from "@/src/features/connections/types";
-import { collectionTabId, databaseTabId, docConnectSaved, docDisconnect } from "@/src/features/documents/api";
+import { engineOf, type ConnectionProfile, type SavedConnectionProfile } from "@/src/features/connections/types";
 import { clearQueryResultCache, type SavedQuery } from "@/src/features/query/api";
 import { clearQueryDraft } from "@/src/features/query/queryDrafts";
 import { clearCachedQueryResult } from "@/src/features/query/queryResultCache";
@@ -95,12 +94,7 @@ function App() {
     }
     setConnectingId(connectionId);
     try {
-      const connection = connections.find((c) => c.id === connectionId);
-      if (isDocumentEngine(engineOf(connection ?? {}))) {
-        await docConnectSaved(connectionId);
-      } else {
-        await connectSaved(connectionId);
-      }
+      await connectSaved(connectionId);
       setConnectedIds((prev) => new Set(prev).add(connectionId));
       setActiveConnectionId(connectionId);
     } catch (err) {
@@ -112,12 +106,7 @@ function App() {
 
   async function handleDeleteConnection(connectionId: string) {
     if (connectedIds.has(connectionId)) {
-      const connection = connections.find((c) => c.id === connectionId);
-      if (isDocumentEngine(engineOf(connection ?? {}))) {
-        await docDisconnect(connectionId);
-      } else {
-        await disconnect(connectionId);
-      }
+      await disconnect(connectionId);
       setConnectedIds((prev) => {
         const next = new Set(prev);
         next.delete(connectionId);
@@ -143,12 +132,7 @@ function App() {
 
   async function handleDisconnect(connectionId: string) {
     if (!connectedIds.has(connectionId)) return;
-    const connection = connections.find((c) => c.id === connectionId);
-    if (isDocumentEngine(engineOf(connection ?? {}))) {
-      await docDisconnect(connectionId);
-    } else {
-      await disconnect(connectionId);
-    }
+    await disconnect(connectionId);
     setConnectedIds((prev) => {
       const next = new Set(prev);
       next.delete(connectionId);
@@ -176,34 +160,6 @@ function App() {
       prev.some((t) => t.id === id)
         ? prev
         : [...prev, { type: "table", id, connectionId, connectionName, engine, schema, table }]
-    );
-    setActiveTabId(id);
-    setShowHome(false);
-  }
-
-  function handleOpenDatabase(connectionId: string, database: string) {
-    const id = databaseTabId(connectionId, database);
-    const connection = connections.find((c) => c.id === connectionId);
-    const connectionName = connection?.name ?? "";
-
-    setTabs((prev) =>
-      prev.some((t) => t.id === id)
-        ? prev
-        : [...prev, { type: "database", id, connectionId, connectionName, database }]
-    );
-    setActiveTabId(id);
-    setShowHome(false);
-  }
-
-  function handleOpenCollection(connectionId: string, database: string, collection: string) {
-    const id = collectionTabId(connectionId, database, collection);
-    const connection = connections.find((c) => c.id === connectionId);
-    const connectionName = connection?.name ?? "";
-
-    setTabs((prev) =>
-      prev.some((t) => t.id === id)
-        ? prev
-        : [...prev, { type: "collection", id, connectionId, connectionName, database, collection }]
     );
     setActiveTabId(id);
     setShowHome(false);
@@ -321,8 +277,6 @@ function App() {
           onDeleteConnection={handleDeleteConnection}
           onDisconnect={handleDisconnect}
           onOpenTable={handleOpenTable}
-          onOpenDatabase={handleOpenDatabase}
-          onOpenCollection={handleOpenCollection}
           onNewConnection={() => setDialogOpen(true)}
           onNewQuery={handleNewQuery}
           onOpenSavedQuery={handleOpenSavedQuery}

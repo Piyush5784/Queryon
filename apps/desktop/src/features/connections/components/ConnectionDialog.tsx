@@ -28,11 +28,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@queryon/ui/components/select";
-import { connect, pickDuckdbFile, pickSshKeyFile, pickSqliteFile, saveConnection, testConnection } from "@/src/features/connections/api";
-import { docConnect, docTestConnection } from "@/src/features/documents/api";
+import { connect, pickSshKeyFile, pickSqliteFile, saveConnection, testConnection } from "@/src/features/connections/api";
 import {
   createEmptyConnectionDraft,
-  isDocumentEngine,
   isFileBasedEngine,
   isRemoteUrlEngine,
   parseConnectionUrl,
@@ -79,10 +77,8 @@ const DEV_URLS: Record<Engine, string> = {
   "sql-server": "",
   "star-rocks": "mysql://root:devpass@localhost:39030/devdb",
   "click-house": "http://devuser:devpass@localhost:48123/devdb",
-  "duck-db": "",
   "lib-sql": "",
   trino: "http://admin@localhost:48080",
-  "mongo-db": "",
 };
 
 const FIELD_PLACEHOLDERS: Record<Engine, { database: string; user: string }> = {
@@ -97,10 +93,8 @@ const FIELD_PLACEHOLDERS: Record<Engine, { database: string; user: string }> = {
   sqlite: { database: "postgres", user: "postgres" },
   "sql-server": { database: "master", user: "sa" },
   "click-house": { database: "default", user: "default" },
-  "duck-db": { database: "postgres", user: "postgres" },
   "lib-sql": { database: "postgres", user: "postgres" },
   trino: { database: "memory", user: "admin" },
-  "mongo-db": { database: "myDatabase", user: "" },
 };
 
 export function ConnectionDialog({
@@ -179,12 +173,12 @@ export function ConnectionDialog({
 
   async function handleChooseDatabaseFile() {
     try {
-      const chosen = engine === "duck-db" ? await pickDuckdbFile() : await pickSqliteFile();
+      const chosen = await pickSqliteFile();
       if (chosen) {
         update("database", chosen);
         if (!draft.name.trim()) {
           const fileName = chosen.split(/[/\\]/).pop() ?? chosen;
-          update("name", fileName.replace(/\.(db|sqlite|sqlite3|duckdb)$/i, ""));
+          update("name", fileName.replace(/\.(db|sqlite|sqlite3)$/i, ""));
         }
       }
     } catch (err) {
@@ -211,9 +205,7 @@ export function ConnectionDialog({
   async function handleTest() {
     setStatus({ kind: "testing" });
     try {
-      const info = isDocumentEngine(engine)
-        ? await docTestConnection(buildProfile())
-        : await testConnection(buildProfile());
+      const info = await testConnection(buildProfile());
       setStatus({ kind: "test-success", serverVersion: info.serverVersion });
     } catch (err) {
       setStatus({
@@ -228,11 +220,7 @@ export function ConnectionDialog({
     setStatus({ kind: "connecting" });
     const profile = buildProfile();
     try {
-      if (isDocumentEngine(engine)) {
-        await docConnect(profile);
-      } else {
-        await connect(profile);
-      }
+      await connect(profile);
       if (saveForNextTime) {
         await saveConnection(profile);
       }
@@ -301,9 +289,7 @@ export function ConnectionDialog({
               <DialogDescription>
                 {isFileBasedEngine(engine)
                   ? `Choose a ${engineLabel} database file on this machine.`
-                  : isDocumentEngine(engine)
-                    ? "Paste your MongoDB connection string — mongodb:// or mongodb+srv://."
-                    : isRemoteUrlEngine(engine)
+                  : isRemoteUrlEngine(engine)
                     ? "Enter the sqld/Turso server URL, and an auth token if the server requires one."
                     : engine === "neon"
                       ? "Paste your Neon connection string to auto-fill the fields, or enter them manually."
@@ -351,55 +337,6 @@ export function ConnectionDialog({
                           value={draft.name}
                           onChange={(e) => update("name", e.target.value)}
                           autoComplete="off"
-                        />
-                      </FieldContent>
-                    </Field>
-                  </>
-                ) : isDocumentEngine(engine) ? (
-                  <>
-                    <Field>
-                      <FieldLabel htmlFor="conn-name">Name</FieldLabel>
-                      <FieldContent>
-                        <Input
-                          id="conn-name"
-                          placeholder="My Mongo Cluster"
-                          value={draft.name}
-                          onChange={(e) => update("name", e.target.value)}
-                          autoComplete="off"
-                        />
-                      </FieldContent>
-                    </Field>
-
-                    <Field>
-                      <FieldLabel htmlFor="conn-mongo-url">
-                        <Link2 className="size-3.5" />
-                        Connection String
-                      </FieldLabel>
-                      <FieldContent>
-                        <Input
-                          id="conn-mongo-url"
-                          placeholder="mongodb+srv://user:password@cluster.mongodb.net/myDatabase"
-                          value={draft.host}
-                          onChange={(e) => update("host", e.target.value)}
-                          autoComplete="off"
-                          spellCheck={false}
-                        />
-                        <FieldDescription>
-                          Include the database name in the path if you want a default database.
-                        </FieldDescription>
-                      </FieldContent>
-                    </Field>
-
-                    <Field>
-                      <FieldLabel htmlFor="conn-mongo-database">Default Database</FieldLabel>
-                      <FieldContent>
-                        <Input
-                          id="conn-mongo-database"
-                          placeholder={FIELD_PLACEHOLDERS[engine].database}
-                          value={draft.database}
-                          onChange={(e) => update("database", e.target.value)}
-                          autoComplete="off"
-                          spellCheck={false}
                         />
                       </FieldContent>
                     </Field>

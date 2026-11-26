@@ -26,8 +26,6 @@ interface AppLayoutProps {
   onDeleteConnection: (id: string) => void;
   onDisconnect: (id: string) => void;
   onOpenTable: (connectionId: string, schema: string, table: string) => void;
-  onOpenDatabase: (connectionId: string, database: string) => void;
-  onOpenCollection: (connectionId: string, database: string, collection: string) => void;
   onNewConnection: () => void;
   onNewQuery: (connectionId?: string) => void;
   onOpenSavedQuery: (query: SavedQuery) => void;
@@ -56,8 +54,6 @@ export function AppLayout({
   onDeleteConnection,
   onDisconnect,
   onOpenTable,
-  onOpenDatabase,
-  onOpenCollection,
   onNewConnection,
   onNewQuery,
   onOpenSavedQuery,
@@ -86,8 +82,6 @@ export function AppLayout({
           onDisconnect={onDisconnect}
           onDeleteConnection={onDeleteConnection}
           onOpenTable={onOpenTable}
-          onOpenDatabase={onOpenDatabase}
-          onOpenCollection={onOpenCollection}
           onNewConnection={onNewConnection}
           onOpenSavedQuery={onOpenSavedQuery}
           onOpenHistoryEntry={onOpenHistoryEntry}
@@ -151,7 +145,6 @@ export function AppLayout({
             onDetachTab={onDetachTab}
             onNewConnection={onNewConnection}
             onQueryActivity={onQueryActivity}
-            onOpenCollection={onOpenCollection}
           />
         </SidebarInset>
       </SidebarProvider>

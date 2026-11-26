@@ -5,8 +5,6 @@ import { ThemeProvider } from "@/src/components/theme-provider";
 import { TooltipButton } from "@/src/components/TooltipButton";
 import type { AppTab } from "@/src/app/tabs";
 import { redockTab } from "@/src/app/detachedWindow";
-import { CollectionsOverview } from "@/src/features/documents/components/CollectionsOverview";
-import { CollectionView } from "@/src/features/documents/components/CollectionView";
 import { QueryTabView } from "@/src/features/query/components/QueryTabView";
 import { TableView } from "@/src/features/tables/components/TableView";
 import { Toaster } from "@queryon/ui/components/toast";
@@ -34,13 +32,7 @@ export function DetachedTabApp({ tab }: DetachedTabAppProps) {
         <div className="flex h-svh min-h-0 flex-col">
           <div className="flex h-8 shrink-0 items-center justify-between border-b px-2" data-tauri-drag-region>
             <span className="pointer-events-none text-xs text-muted-foreground">
-              {tab.type === "table"
-                ? `${tab.schema}.${tab.table}`
-                : tab.type === "collection"
-                  ? `${tab.database}.${tab.collection}`
-                  : tab.type === "database"
-                    ? tab.database
-                    : tab.title}
+              {tab.type === "table" ? `${tab.schema}.${tab.table}` : tab.title}
             </span>
             <TooltipButton
               size="icon-sm"
@@ -55,10 +47,6 @@ export function DetachedTabApp({ tab }: DetachedTabAppProps) {
           <div className="min-h-0 flex-1">
             {tab.type === "table" ? (
               <TableView tab={tab} />
-            ) : tab.type === "collection" ? (
-              <CollectionView tab={tab} />
-            ) : tab.type === "database" ? (
-              <CollectionsOverview tab={tab} onOpenCollection={() => {}} />
             ) : (
               <QueryTabView tab={tab} />
             )}

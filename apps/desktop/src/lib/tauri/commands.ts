@@ -1,18 +1,15 @@
 import { commands } from "@/src/lib/tauri/bindings";
 import type {
-  CollectionRef,
   ColumnInfo,
   ConnectionInfo,
   ConnectionProfile,
   ConstraintInfo,
   ConstraintKind,
   ColumnEdit,
-  DatabaseRef,
   DdlBatchResult,
   DdlExecutionResult,
   DdlPreview,
   DdlStatement,
-  DocumentPage,
   ExportFormat,
   FilterOperator,
   ForeignKeyAction,
@@ -36,19 +33,16 @@ import type {
 } from "@/src/lib/tauri/bindings";
 
 export type {
-  CollectionRef,
   ColumnInfo,
   ConnectionInfo,
   ConnectionProfile,
   ConstraintInfo,
   ConstraintKind,
   ColumnEdit,
-  DatabaseRef,
   DdlBatchResult,
   DdlExecutionResult,
   DdlPreview,
   DdlStatement,
-  DocumentPage,
   ExportFormat,
   FilterOperator,
   ForeignKeyAction,
@@ -163,10 +157,6 @@ export async function pickSshKeyFile(): Promise<string | null> {
 
 export async function pickSqliteFile(): Promise<string | null> {
   return unwrap(await commands.dbPickSqliteFile());
-}
-
-export async function pickDuckdbFile(): Promise<string | null> {
-  return unwrap(await commands.dbPickDuckdbFile());
 }
 
 export async function listTables(connectionId: string): Promise<TableRef[]> {
@@ -379,95 +369,6 @@ export async function runQueryExport(jobId: string, request: QueryExportRequest)
 
 export async function cancelExport(jobId: string): Promise<void> {
   await commands.exportCancel(jobId);
-}
-
-export async function docConnect(profile: ConnectionProfile): Promise<ConnectionInfo> {
-  return unwrap(await commands.docConnect(profile));
-}
-
-export async function docTestConnection(profile: ConnectionProfile): Promise<ConnectionInfo> {
-  return unwrap(await commands.docTestConnection(profile));
-}
-
-export async function docConnectSaved(connectionId: string): Promise<ConnectionInfo> {
-  return unwrap(await commands.docConnectSaved(connectionId));
-}
-
-export async function docDisconnect(connectionId: string): Promise<void> {
-  await commands.docDisconnect(connectionId);
-}
-
-export async function docListActiveConnections(): Promise<string[]> {
-  return commands.docListActiveConnections();
-}
-
-export async function docDefaultDatabase(connectionId: string): Promise<string | null> {
-  const result = await commands.docDefaultDatabase(connectionId);
-  return result ?? null;
-}
-
-export async function docListDatabases(connectionId: string): Promise<DatabaseRef[]> {
-  return unwrap(await commands.docListDatabases(connectionId));
-}
-
-export async function docListCollections(
-  connectionId: string,
-  database: string
-): Promise<CollectionRef[]> {
-  return unwrap(await commands.docListCollections(connectionId, database));
-}
-
-export async function docListDocuments(
-  connectionId: string,
-  database: string,
-  collection: string,
-  limit: number,
-  skip: number
-): Promise<DocumentPage> {
-  return unwrap(await commands.docListDocuments(connectionId, database, collection, limit, skip));
-}
-
-export async function docGetDocument(
-  connectionId: string,
-  database: string,
-  collection: string,
-  id: string
-): Promise<CellValue | null> {
-  const encoded = await unwrap(await commands.docGetDocument(connectionId, database, collection, id));
-  if (encoded === null) return null;
-  return JSON.parse(encoded) as CellValue;
-}
-
-export async function docInsertDocument(
-  connectionId: string,
-  database: string,
-  collection: string,
-  document: unknown
-): Promise<string> {
-  return unwrap(
-    await commands.docInsertDocument(connectionId, database, collection, JSON.stringify(document))
-  );
-}
-
-export async function docUpdateDocument(
-  connectionId: string,
-  database: string,
-  collection: string,
-  id: string,
-  document: unknown
-): Promise<void> {
-  await unwrap(
-    await commands.docUpdateDocument(connectionId, database, collection, id, JSON.stringify(document))
-  );
-}
-
-export async function docDeleteDocument(
-  connectionId: string,
-  database: string,
-  collection: string,
-  id: string
-): Promise<void> {
-  await unwrap(await commands.docDeleteDocument(connectionId, database, collection, id));
 }
 
 export async function logFrontendError(message: string, stack?: string): Promise<void> {

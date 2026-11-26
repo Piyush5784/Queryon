@@ -26,7 +26,7 @@ const FEATURES = [
   {
     title: "Every engine, one app",
     description:
-      "Postgres, MySQL, SQL Server, SQLite, DuckDB, ClickHouse and more.",
+      "Postgres, MySQL, SQL Server, SQLite, ClickHouse and more.",
     icon: Database,
   },
   {

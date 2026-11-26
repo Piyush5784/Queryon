@@ -1,6 +1,6 @@
 # Queryon Desktop
 
-A desktop database client supporting Postgres, MySQL, SQL Server, SQLite, DuckDB, ClickHouse, StarRocks, and several Postgres/MySQL-compatible engines (Neon, CockroachDB, GreengageDB, MariaDB, TiDB). Tauri + React + TypeScript frontend, Rust native layer for every database and credential operation.
+A desktop database client supporting Postgres, MySQL, SQL Server, SQLite, ClickHouse, StarRocks, and several Postgres/MySQL-compatible engines (Neon, CockroachDB, GreengageDB, MariaDB, TiDB). Tauri + React + TypeScript frontend, Rust native layer for every database and credential operation.
 
 See `Docs/Phase-1-init.md` for the product spec, `Docs/Phase-2-Database-Support.md` for the multi-engine roadmap and per-engine feasibility notes, and `Docs/Phase-3-Schema-Editing.md` for the schema-editing feature scope.
 
@@ -32,15 +32,13 @@ cargo test --lib                        # unit tests
 cargo test --test <engine>_metadata      # integration tests against a live/embedded database
 ```
 
-Most integration tests need their engine's dev container running first (see `docker-compose.yml`); SQLite and DuckDB are embedded and need no container.
+Most integration tests need their engine's dev container running first (see `docker-compose.yml`); SQLite is embedded and needs no container.
 
 ## Building
 
 ```bash
 pnpm tauri build
 ```
-
-DuckDB links against a downloaded prebuilt binary (`DUCKDB_DOWNLOAD_LIB=1`, set automatically via `src-tauri/.cargo/config.toml`) rather than compiling DuckDB's C++ engine from source.
 
 ## Recommended IDE Setup
 

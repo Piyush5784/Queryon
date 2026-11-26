@@ -1,7 +1,5 @@
 pub mod clickhouse;
-pub mod duckdb;
 pub mod libsql;
-pub mod mongodb;
 pub mod mssql;
 pub mod mysql;
 pub mod postgres;

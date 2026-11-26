@@ -50,10 +50,6 @@ export const ENGINE_LOGOS: { name: string; Logo: () => React.JSX.Element }[] = [
     ),
   },
   {
-    name: "DuckDB",
-    Logo: () => <DeviconLogo src="/engine-logos/duckdb.svg" alt="DuckDB" />,
-  },
-  {
     name: "MariaDB",
     Logo: () => <DeviconLogo src="/engine-logos/mariadb.svg" alt="MariaDB" />,
   },
